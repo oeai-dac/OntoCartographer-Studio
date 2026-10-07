@@ -673,7 +673,7 @@ Click **Verify** (⑫ in the [Interface Overview](#interface-overview)) to check
 
 The **GraphExplorer** is a companion application for exploring your data visually — a searchable graph with filters, maps, charts, a timeline and a stratigraphy view. It is available [here](https://github.com/oeai-dac/GraphExplorer). OntoCartographer Studio exports a file for it with **Explore** (see [GraphExplorer Export](#graphexplorer-export)).
 
-That file is built from the same mapping as the RDF, with a few differences that make it easier to read: nodes keep their CIDOC CRM colours and labels, and free-text values (`rdfs:Literal`, `xsd:*`, `geo:wktLiteral`) become attributes of their node instead of nodes of their own. Two settings let you adapt the result further. Neither of them changes your RDF export.
+That file is built from the same mapping as the RDF, with a few differences that make it easier to read: labels and free-text values (`rdfs:Literal`, `xsd:*`, `geo:wktLiteral`) become attributes of their node instead of nodes of their own. Two settings let you adapt the result further. Neither of them changes your RDF export.
 
 #### Explorer Names
 
