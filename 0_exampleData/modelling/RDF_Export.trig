@@ -2,57 +2,46 @@
 @prefix ns1: <http://www.cidoc-crm.org/extensions/crmarchaeo/> .
 @prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
 @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix schema: <https://schema.org/> .
 @prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
 
-<http://example.org/example-indy-style/Site> {
-    <http://example.org/example-indy-style/wadi_al_stirr> a crm:E27_Site ;
-        rdfs:label "Wadi al-Sirr"@en ;
-        crm:P45_consists_of <http://example.org/example-indy-style/the_secret_place> .
+<http://example.org/example-indy-style/SU> {
+    <http://example.org/vocabs/backfill_earlier_looting> a crm:E55_Type ;
+        rdfs:label "Backfill following an earlier looting pit"@en .
+
+    <http://example.org/vocabs/use_horizont> a crm:E55_Type ;
+        rdfs:label "Use horizon in front of a structure"@en .
 
     <http://example.org/example-indy-style/SP-SO1-SU1001> a ns1:A8_Stratigraphic_Unit ;
-        rdfs:label "SU1001"@en .
+        rdfs:label "SU1001"@en ;
+        crm:P2_has_type <http://example.org/vocabs/backfill_earlier_looting> ;
+        ns1:AP11_has_physical_relation_to <http://example.org/example-indy-style/SP-SO1-SU1002> .
 
     <http://example.org/example-indy-style/SP-SO1-SU1002> a ns1:A8_Stratigraphic_Unit ;
-        rdfs:label "SU1002"@en .
+        rdfs:label "SU1002"@en ;
+        crm:P2_has_type <http://example.org/vocabs/use_horizont> ;
+        ns1:AP11_has_physical_relation_to <http://example.org/example-indy-style/SP-SO1-SU1001> .
 
-    <http://example.org/example-indy-style/TSP> a crm:E42_Identifier ;
-        rdfs:label "TSP"@en .
 
-    <http://example.org/example-indy-style/secret_place_excavation> a ns1:A9_Archaeological_Excavation ;
-        rdfs:label "Excavation of the Secret Place"@en ;
-        ns1:AP23_finishes "1989"^^xsd:date ;
-        ns1:AP24_starts "1981"^^xsd:date ;
-        ns1:AP3_investigated <http://example.org/example-indy-style/SP-SO1> .
-
-    <http://example.org/example-indy-style/the_secret_place> a crm:E27_Site ;
-        rdfs:label "The Secret Place"@en ;
-        crm:P46_is_composed_of <http://example.org/example-indy-style/SP-SO1> ;
-        crm:P48_has_preferred_identifier <http://example.org/example-indy-style/TSP> ;
-        ns1:AP3i_was_investigated_by <http://example.org/example-indy-style/secret_place_excavation> .
-
-    <http://example.org/example-indy-style/SP-SO1> a <http://www.cidoc-crm.org/extensions/crmsci/S20_Rigid_Physical_Feature> ;
-        rdfs:label "Secret Place Sondage 1"@en ;
-        crm:P46_is_composed_of <http://example.org/example-indy-style/SP-SO1-SU1001>,
-            <http://example.org/example-indy-style/SP-SO1-SU1002> .
 }
 
 <http://example.org/example-indy-style/Artefacts> {
-    <http://example.org/example-indy-style/SP-SO1-SU1001-01_emb> a ns1:A7_Embedding ;
+    <http://example.org/example-indy-style/SP-SO1-SU1001-01> a crm:E19_Physical_Object ;
         rdfs:label "Artefact-1001"@en ;
         crm:P2_has_type <https://www.wikidata.org/wiki/whip> ;
         crm:P45_consists_of <http://example.org/vocabs/leather> .
 
-    <http://example.org/example-indy-style/SP-SO1-SU1001-02_emb> a ns1:A7_Embedding ;
+    <http://example.org/example-indy-style/SP-SO1-SU1001-02> a crm:E19_Physical_Object ;
         rdfs:label "Artefact-1002"@en ;
         crm:P2_has_type <https://www.wikidata.org/wiki/ostraka> ;
         crm:P45_consists_of <http://example.org/vocabs/ceramic> .
 
-    <http://example.org/example-indy-style/SP-SO1-SU1002-01_emb> a ns1:A7_Embedding ;
+    <http://example.org/example-indy-style/SP-SO1-SU1002-01> a crm:E19_Physical_Object ;
         rdfs:label "Artefact-2001"@en ;
         crm:P2_has_type <https://www.wikidata.org/wiki/amulett> ;
         crm:P45_consists_of <http://example.org/vocabs/gold> .
 
-    <http://example.org/example-indy-style/SP-SO1-SU1002-02_emb> a ns1:A7_Embedding ;
+    <http://example.org/example-indy-style/SP-SO1-SU1002-02> a crm:E19_Physical_Object ;
         rdfs:label "Artefact-2002"@en ;
         crm:P2_has_type <https://www.wikidata.org/wiki/statuette> ;
         crm:P45_consists_of <http://example.org/vocabs/terracotta> .
@@ -70,52 +59,52 @@
         rdfs:label "Terracotta"@en .
 
     <https://www.wikidata.org/wiki/amulett> a crm:E55_Type ;
-        rdfs:label "Amulett, with geometric décor"@en .
+        rdfs:label "Amulett, mit geometrischem Dekor"@de,
+            "Amulett, with geometric décor"@en .
 
     <https://www.wikidata.org/wiki/ostraka> a crm:E55_Type ;
-        rdfs:label "Ostraka, with ancient map"@en .
+        rdfs:label "Ostrake, mit antiker Karte"@de,
+            "Ostraka, with ancient map"@en .
 
     <https://www.wikidata.org/wiki/statuette> a crm:E55_Type ;
-        rdfs:label "Statuett, anthropomorphic"@en .
+        rdfs:label "Statuette, antropomorph"@de,
+            "Statuett, anthropomorphic"@en .
 
     <https://www.wikidata.org/wiki/whip> a crm:E55_Type ;
-        rdfs:label "Whip, fragmented"@en .
+        rdfs:label "Peitsche, fragmentiert"@de,
+            "Whip, fragmented"@en .
 }
 
-<http://example.org/example-indy-style/SU> {
-    <http://example.org/vocabs/backfill_earlier_looting> a crm:E55_Type ;
-        rdfs:label "Backfill following an earlier looting pit"@en .
+<http://example.org/example-indy-style/Site> {
+    <http://example.org/example-indy-style/wadi_al_stirr> a crm:E27_Site ;
+        rdfs:label "Wadi al-Sirr"@en ;
+        crm:P46_is_composed_of <http://example.org/example-indy-style/the_secret_place> .
 
-    <http://example.org/vocabs/use_horizont> a crm:E55_Type ;
-        rdfs:label "Use horizon in front of a structure"@en .
+    <http://example.org/example-indy-style/TSP> a crm:E42_Identifier ;
+        rdfs:label "TSP"@en .
 
-    <http://example.org/example-indy-style/SP-SO1-SU1001-01_emb> a ns1:A7_Embedding ;
-        rdfs:label "Artefact-1001"@en .
+    <http://example.org/example-indy-style/secret_place_excavation> a ns1:A9_Archaeological_Excavation ;
+        rdfs:label "Excavation of the Secret Place"@en ;
+        ns1:AP3_investigated <http://example.org/example-indy-style/SP-SO1> ;
+        schema:endDate "1989"^^xsd:gYear ;
+        schema:startDate "1981"^^xsd:gYear .
 
-    <http://example.org/example-indy-style/SP-SO1-SU1001-02_emb> a ns1:A7_Embedding ;
-        rdfs:label "Artefact-1002"@en .
+    <http://example.org/example-indy-style/the_secret_place> a crm:E27_Site ;
+        rdfs:label "The Secret Place"@en ;
+        crm:P46_is_composed_of <http://example.org/example-indy-style/SP-SO1> ;
+        crm:P48_has_preferred_identifier <http://example.org/example-indy-style/TSP> ;
+        ns1:AP3i_was_investigated_by <http://example.org/example-indy-style/secret_place_excavation> .
 
-    <http://example.org/example-indy-style/SP-SO1-SU1002-01_emb> a ns1:A7_Embedding ;
-        rdfs:label "Artefact-2001"@en .
-
-    <http://example.org/example-indy-style/SP-SO1-SU1002-02_emb> a ns1:A7_Embedding ;
-        rdfs:label "Artefact-2002"@en .
+    <http://example.org/example-indy-style/SP-SO1> a <http://www.cidoc-crm.org/extensions/crmsci/S20_Rigid_Physical_Feature> ;
+        rdfs:label "Secret Place Sondage 1"@en ;
+        crm:P46_is_composed_of <http://example.org/example-indy-style/SP-SO1-SU1001>,
+            <http://example.org/example-indy-style/SP-SO1-SU1002> .
 
     <http://example.org/example-indy-style/SP-SO1-SU1001> a ns1:A8_Stratigraphic_Unit ;
-        rdfs:label "SU1001"@en ;
-        crm:P2_has_type <http://example.org/vocabs/backfill_earlier_looting> ;
-        ns1:AP11_has_physical_relation_to <http://example.org/example-indy-style/SP-SO1-SU1002> ;
-        ns1:AP19i_contains_embedding <http://example.org/example-indy-style/SP-SO1-SU1001-01_emb>,
-            <http://example.org/example-indy-style/SP-SO1-SU1002-01_emb> .
+        rdfs:label "SU1001"@en .
 
     <http://example.org/example-indy-style/SP-SO1-SU1002> a ns1:A8_Stratigraphic_Unit ;
-        rdfs:label "SU1002"@en ;
-        crm:P2_has_type <http://example.org/vocabs/use_horizont> ;
-        ns1:AP11_has_physical_relation_to <http://example.org/example-indy-style/SP-SO1-SU1001> ;
-        ns1:AP19i_contains_embedding <http://example.org/example-indy-style/SP-SO1-SU1001-02_emb>,
-            <http://example.org/example-indy-style/SP-SO1-SU1002-02_emb> .
-
-
+        rdfs:label "SU1002"@en .
 }
 
 # RDF-star annotations for graph http://example.org/example-indy-style/SU

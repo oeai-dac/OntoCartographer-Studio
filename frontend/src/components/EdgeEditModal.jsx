@@ -1,5 +1,6 @@
 import React, { useState } from 'react'
-import { X, GitMerge, ChevronRight, Link2, Anchor, GitBranch, Globe2 } from 'lucide-react'
+import { X, GitMerge, ChevronRight, Link2, Anchor, GitBranch, Globe2, AlertTriangle } from 'lucide-react'
+import { isFoldedLiteralClass } from '../utils/graphml.js'
 
 /**
  * Modal to edit an existing edge's metadata:
@@ -39,6 +40,12 @@ export default function EdgeEditModal({ edge, sourceNode, targetNode, onConfirm,
 
   const srcCols = sourceNode?.data?.tableRows?.[0] ? Object.keys(sourceNode.data.tableRows[0]) : []
   const tgtCols = targetNode?.data?.tableRows?.[0] ? Object.keys(targetNode.data.tableRows[0]) : []
+
+  // Free-text ranges (rdfs:Literal, xsd:*, geo:wktLiteral) are folded into the
+  // domain node's attributes by the Graph Explorer export -- no node is emitted
+  // for them, so there is nothing an opposite direction could point back from.
+  // Both inverse controls would be silently ignored here, so say so instead.
+  const targetIsLiteral = isFoldedLiteralClass(targetNode?.data?.uri)
 
   const handleConfirm = () => {
     onConfirm({
@@ -122,9 +129,19 @@ export default function EdgeEditModal({ edge, sourceNode, targetNode, onConfirm,
             <label style={{ fontSize: 9, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'flex', alignItems: 'center', gap: 4, marginBottom: 3 }}>
               <Globe2 size={9} /> Explorer-Name (Property)
             </label>
-            <input value={explorerLabel} onChange={e => setExplorerLabel(e.target.value)}
-              style={{ width: '100%', fontSize: 11, padding: '5px 8px' }}
-              placeholder="e.g. has material type" />
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <input value={explorerLabel} onChange={e => setExplorerLabel(e.target.value)}
+                style={{ flex: 1, fontSize: 11, padding: '5px 8px' }}
+                placeholder="e.g. has material type" />
+              {explorerLabel && (
+                <button className="btn-ghost"
+                  style={{ padding: '3px 6px', fontSize: 10, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 3 }}
+                  onClick={() => setExplorerLabel('')}
+                  title="Remove Explorer name — the connection then uses its property name again">
+                  <X size={10} /> Clear
+                </button>
+              )}
+            </div>
             <span style={{ fontSize: 9, color: 'var(--text-muted)', display: 'block', marginTop: 2 }}>
               Replaces the CIDOC property name in the Graph Explorer for this connection only. Two connections
               sharing the same Explorer name are merged into a single group in the Explorer. Has no effect on
@@ -142,13 +159,33 @@ export default function EdgeEditModal({ edge, sourceNode, targetNode, onConfirm,
               <Globe2 size={9} /> Inverse Explorer-Name (Property)
             </label>
             <input value={inversePropertyUri} onChange={e => setInversePropertyUri(e.target.value)}
-              style={{ width: '100%', fontSize: 10, fontFamily: 'var(--mono)', padding: '5px 8px', color: 'var(--text-dim)' }}
-              placeholder="http://... (empty = automatic from ontology)" />
-            <span style={{ fontSize: 9, color: 'var(--text-muted)', display: 'block', marginTop: 2 }}>
-              Optional. Expects the URI of the inverse property. Only needed if the ontology declares no inverse,
-              or if one other than the automatically resolved property should be shown. Leave empty for automatic
-              resolution (owl:inverseOf), or use “No automatic opposite direction” below.
-            </span>
+              disabled={targetIsLiteral}
+              style={{
+                width: '100%', fontSize: 10, fontFamily: 'var(--mono)', padding: '5px 8px', color: 'var(--text-dim)',
+                opacity: targetIsLiteral ? 0.45 : 1,
+                cursor: targetIsLiteral ? 'not-allowed' : 'text',
+              }}
+              placeholder={targetIsLiteral ? '(not available for free-text ranges)' : 'e.g. is incorporated in — empty = automatic from ontology'} />
+            {targetIsLiteral ? (
+              <span style={{ fontSize: 9, color: 'var(--orange)', display: 'flex', alignItems: 'flex-start', gap: 4, marginTop: 3, lineHeight: 1.4 }}>
+                <AlertTriangle size={10} style={{ flexShrink: 0, marginTop: 1 }} />
+                <span>
+                  The range <span style={{ fontFamily: 'var(--mono)' }}>{targetNode?.data?.label}</span> is a free-text
+                  value: the Graph Explorer folds it into the attributes of{' '}
+                  <span style={{ fontFamily: 'var(--mono)' }}>{sourceNode?.data?.label}</span> instead of creating a
+                  node for it. With no node on the other end there is no opposite direction to name, so an inverse
+                  entered here would have no effect on the export.
+                  {inversePropertyUri && <> The stored value <span style={{ fontFamily: 'var(--mono)' }}>“{inversePropertyUri}”</span> is kept, but ignored.</>}
+                </span>
+              </span>
+            ) : (
+              <span style={{ fontSize: 9, color: 'var(--text-muted)', display: 'block', marginTop: 2 }}>
+                Optional. Name shown for the opposite direction in the Graph Explorer — or the URI of an inverse
+                property, whose label is then used. Only needed if the ontology declares no inverse, or if another
+                name should be shown. Leave empty for automatic resolution (owl:inverseOf), or use “No automatic
+                opposite direction” below. Avoid “/” and “#” in a name: only the text after them is shown.
+              </span>
+            )}
           </div>
 
           {/* Handles */}
@@ -220,22 +257,27 @@ export default function EdgeEditModal({ edge, sourceNode, targetNode, onConfirm,
           {/* Inverse suppression */}
           <div>
             <label style={{
-              display: 'flex', alignItems: 'flex-start', gap: 6, cursor: 'pointer',
+              display: 'flex', alignItems: 'flex-start', gap: 6,
+              cursor: targetIsLiteral ? 'not-allowed' : 'pointer',
               padding: '6px 8px', border: '1px solid var(--border)', borderRadius: 4,
-              background: noInverse ? 'rgba(255,191,40,0.08)' : 'var(--bg)',
+              background: noInverse && !targetIsLiteral ? 'rgba(255,191,40,0.08)' : 'var(--bg)',
+              opacity: targetIsLiteral ? 0.45 : 1,
             }}>
               <input type="checkbox" checked={noInverse}
                 onChange={e => setNoInverse(e.target.checked)}
+                disabled={targetIsLiteral}
                 style={{ marginTop: 2 }} />
               <span>
                 <span style={{ fontSize: 11, color: 'var(--text)', display: 'flex', alignItems: 'center', gap: 4 }}>
                   <GitBranch size={10} /> No automatic opposite direction for this connection
                 </span>
                 <span style={{ fontSize: 9, color: 'var(--text-muted)', display: 'block', marginTop: 2, lineHeight: 1.4 }}>
-                  For every edge, the Graph Explorer normally also derives the view from the opposite side
-                  (e.g. the inverse property or an inverted Dot-One value). Enable this if that derivation does
-                  not apply — or is uncertain — for this specific connection; only the direction actually
-                  modelled here will then appear.
+                  {targetIsLiteral
+                    ? 'Not applicable: a free-text range never gets an opposite direction in the first place (see the note above).'
+                    : `For every edge, the Graph Explorer normally also derives the view from the opposite side
+                       (e.g. the inverse property or an inverted Dot-One value). Enable this if that derivation does
+                       not apply — or is uncertain — for this specific connection; only the direction actually
+                       modelled here will then appear.`}
                 </span>
               </span>
             </label>

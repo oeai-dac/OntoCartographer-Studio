@@ -1,0 +1,392 @@
+{
+  "meta": {
+    "title": "OntoCartographer Graph Export",
+    "node_count": 21,
+    "edge_count": 19,
+    "generated_by": "OntoCartographer Studio"
+  },
+  "nodes": {
+    "http://example.org/example-indy-style/the_secret_place": {
+      "l": "The Secret Place",
+      "t": "http://www.cidoc-crm.org/cidoc-crm/E27_Site",
+      "a": {},
+      "o": {
+        "http://www.cidoc-crm.org/cidoc-crm/P48_has_preferred_identifier": [
+          "http://example.org/example-indy-style/TSP"
+        ],
+        "http://www.cidoc-crm.org/extensions/crmarchaeo/AP3i_was_investigated_by": [
+          "http://example.org/example-indy-style/secret_place_excavation"
+        ],
+        "http://www.cidoc-crm.org/cidoc-crm/P46_is_composed_of": [
+          "http://example.org/example-indy-style/SP-SO1"
+        ]
+      },
+      "i": {
+        "http://www.cidoc-crm.org/cidoc-crm/P46i_forms_part_of": [
+          "http://example.org/example-indy-style/wadi_al_stirr"
+        ]
+      }
+    },
+    "http://example.org/example-indy-style/TSP": {
+      "l": "TSP",
+      "t": "http://www.cidoc-crm.org/cidoc-crm/E42_Identifier",
+      "a": {},
+      "o": {},
+      "i": {
+        "http://www.cidoc-crm.org/cidoc-crm/P48i_is_preferred_identifier_of": [
+          "http://example.org/example-indy-style/the_secret_place"
+        ]
+      }
+    },
+    "http://example.org/example-indy-style/secret_place_excavation": {
+      "l": "Excavation of the Secret Place",
+      "t": "http://www.cidoc-crm.org/extensions/crmarchaeo/A9_Archaeological_Excavation",
+      "a": {
+        "startDate": "1981",
+        "endDate": "1989"
+      },
+      "o": {
+        "http://www.cidoc-crm.org/extensions/crmarchaeo/AP3_investigated": [
+          "http://example.org/example-indy-style/SP-SO1"
+        ]
+      },
+      "i": {
+        "http://www.cidoc-crm.org/extensions/crmarchaeo/AP3_investigated": [
+          "http://example.org/example-indy-style/the_secret_place"
+        ]
+      }
+    },
+    "http://example.org/example-indy-style/SP-SO1": {
+      "l": "Secret Place Sondage 1",
+      "t": "http://www.cidoc-crm.org/extensions/crmsci/S20_Rigid_Physical_Feature",
+      "a": {},
+      "o": {
+        "http://www.cidoc-crm.org/cidoc-crm/P46_is_composed_of": [
+          "http://example.org/example-indy-style/SP-SO1-SU1001",
+          "http://example.org/example-indy-style/SP-SO1-SU1002"
+        ]
+      },
+      "i": {
+        "http://www.cidoc-crm.org/cidoc-crm/P46i_forms_part_of": [
+          "http://example.org/example-indy-style/the_secret_place"
+        ],
+        "http://www.cidoc-crm.org/extensions/crmarchaeo/AP3i_was_investigated_by": [
+          "http://example.org/example-indy-style/secret_place_excavation"
+        ]
+      }
+    },
+    "http://example.org/example-indy-style/SP-SO1-SU1001": {
+      "l": "SU1001",
+      "t": "http://www.cidoc-crm.org/extensions/crmarchaeo/A8_Stratigraphic_Unit#as:stratigraphical_unit",
+      "a": {},
+      "o": {
+        "http://www.cidoc-crm.org/cidoc-crm/P2_has_type#as:has_interpretation": [
+          "http://example.org/vocabs/backfill_earlier_looting"
+        ],
+        "http://www.cidoc-crm.org/extensions/crmarchaeo/AP11_has_physical_relation_to#dot1:above": [
+          "http://example.org/example-indy-style/SP-SO1-SU1002"
+        ]
+      },
+      "i": {
+        "http://www.cidoc-crm.org/cidoc-crm/P46i_forms_part_of": [
+          "http://example.org/example-indy-style/SP-SO1"
+        ]
+      }
+    },
+    "http://example.org/example-indy-style/SP-SO1-SU1002": {
+      "l": "SU1002",
+      "t": "http://www.cidoc-crm.org/extensions/crmarchaeo/A8_Stratigraphic_Unit#as:stratigraphical_unit",
+      "a": {},
+      "o": {
+        "http://www.cidoc-crm.org/cidoc-crm/P2_has_type#as:has_interpretation": [
+          "http://example.org/vocabs/use_horizont"
+        ],
+        "http://www.cidoc-crm.org/extensions/crmarchaeo/AP11_has_physical_relation_to#dot1:below": [
+          "http://example.org/example-indy-style/SP-SO1-SU1001"
+        ]
+      },
+      "i": {
+        "http://www.cidoc-crm.org/cidoc-crm/P46i_forms_part_of": [
+          "http://example.org/example-indy-style/SP-SO1"
+        ]
+      }
+    },
+    "http://example.org/vocabs/backfill_earlier_looting": {
+      "l": "Backfill following an earlier looting pit",
+      "t": "http://www.cidoc-crm.org/cidoc-crm/E55_Type",
+      "a": {},
+      "o": {},
+      "i": {
+        "is the interpretation of": [
+          "http://example.org/example-indy-style/SP-SO1-SU1001"
+        ]
+      }
+    },
+    "http://example.org/vocabs/use_horizont": {
+      "l": "Use horizon in front of a structure",
+      "t": "http://www.cidoc-crm.org/cidoc-crm/E55_Type",
+      "a": {},
+      "o": {},
+      "i": {
+        "is the interpretation of": [
+          "http://example.org/example-indy-style/SP-SO1-SU1002"
+        ]
+      }
+    },
+    "http://example.org/example-indy-style/SP-SO1-SU1001-01": {
+      "l": "Artefact-1001",
+      "t": "http://www.cidoc-crm.org/cidoc-crm/E19_Physical_Object",
+      "a": {},
+      "o": {
+        "http://www.cidoc-crm.org/cidoc-crm/P45_consists_of": [
+          "http://example.org/vocabs/leather"
+        ],
+        "http://www.cidoc-crm.org/cidoc-crm/P2_has_type": [
+          "https://www.wikidata.org/wiki/whip"
+        ]
+      },
+      "i": {}
+    },
+    "http://example.org/vocabs/leather": {
+      "l": "Leather",
+      "t": "http://www.cidoc-crm.org/cidoc-crm/E57_Material",
+      "a": {},
+      "o": {},
+      "i": {
+        "http://www.cidoc-crm.org/cidoc-crm/P45i_is_incorporated_in": [
+          "http://example.org/example-indy-style/SP-SO1-SU1001-01"
+        ]
+      }
+    },
+    "http://example.org/example-indy-style/SP-SO1-SU1001-02": {
+      "l": "Artefact-1002",
+      "t": "http://www.cidoc-crm.org/cidoc-crm/E19_Physical_Object",
+      "a": {},
+      "o": {
+        "http://www.cidoc-crm.org/cidoc-crm/P45_consists_of": [
+          "http://example.org/vocabs/ceramic"
+        ],
+        "http://www.cidoc-crm.org/cidoc-crm/P2_has_type": [
+          "https://www.wikidata.org/wiki/ostraka"
+        ]
+      },
+      "i": {}
+    },
+    "http://example.org/vocabs/ceramic": {
+      "l": "Ceramic",
+      "t": "http://www.cidoc-crm.org/cidoc-crm/E57_Material",
+      "a": {},
+      "o": {},
+      "i": {
+        "http://www.cidoc-crm.org/cidoc-crm/P45i_is_incorporated_in": [
+          "http://example.org/example-indy-style/SP-SO1-SU1001-02"
+        ]
+      }
+    },
+    "http://example.org/example-indy-style/SP-SO1-SU1002-01": {
+      "l": "Artefact-2001",
+      "t": "http://www.cidoc-crm.org/cidoc-crm/E19_Physical_Object",
+      "a": {},
+      "o": {
+        "http://www.cidoc-crm.org/cidoc-crm/P45_consists_of": [
+          "http://example.org/vocabs/gold"
+        ],
+        "http://www.cidoc-crm.org/cidoc-crm/P2_has_type": [
+          "https://www.wikidata.org/wiki/amulett"
+        ]
+      },
+      "i": {}
+    },
+    "http://example.org/vocabs/gold": {
+      "l": "Gold",
+      "t": "http://www.cidoc-crm.org/cidoc-crm/E57_Material",
+      "a": {},
+      "o": {},
+      "i": {
+        "http://www.cidoc-crm.org/cidoc-crm/P45i_is_incorporated_in": [
+          "http://example.org/example-indy-style/SP-SO1-SU1002-01"
+        ]
+      }
+    },
+    "http://example.org/example-indy-style/SP-SO1-SU1002-02": {
+      "l": "Artefact-2002",
+      "t": "http://www.cidoc-crm.org/cidoc-crm/E19_Physical_Object",
+      "a": {},
+      "o": {
+        "http://www.cidoc-crm.org/cidoc-crm/P45_consists_of": [
+          "http://example.org/vocabs/terracotta"
+        ],
+        "http://www.cidoc-crm.org/cidoc-crm/P2_has_type": [
+          "https://www.wikidata.org/wiki/statuette"
+        ]
+      },
+      "i": {}
+    },
+    "http://example.org/vocabs/terracotta": {
+      "l": "Terracotta",
+      "t": "http://www.cidoc-crm.org/cidoc-crm/E57_Material",
+      "a": {},
+      "o": {},
+      "i": {
+        "http://www.cidoc-crm.org/cidoc-crm/P45i_is_incorporated_in": [
+          "http://example.org/example-indy-style/SP-SO1-SU1002-02"
+        ]
+      }
+    },
+    "https://www.wikidata.org/wiki/whip": {
+      "l": "Whip, fragmented",
+      "t": "http://www.cidoc-crm.org/cidoc-crm/E55_Type",
+      "a": {},
+      "o": {},
+      "i": {
+        "http://www.cidoc-crm.org/cidoc-crm/P2i_is_type_of": [
+          "http://example.org/example-indy-style/SP-SO1-SU1001-01"
+        ]
+      },
+      "l_i18n": {
+        "de": "Peitsche, fragmentiert"
+      }
+    },
+    "https://www.wikidata.org/wiki/ostraka": {
+      "l": "Ostraka, with ancient map",
+      "t": "http://www.cidoc-crm.org/cidoc-crm/E55_Type",
+      "a": {},
+      "o": {},
+      "i": {
+        "http://www.cidoc-crm.org/cidoc-crm/P2i_is_type_of": [
+          "http://example.org/example-indy-style/SP-SO1-SU1001-02"
+        ]
+      },
+      "l_i18n": {
+        "de": "Ostrake, mit antiker Karte"
+      }
+    },
+    "https://www.wikidata.org/wiki/amulett": {
+      "l": "Amulett, with geometric décor",
+      "t": "http://www.cidoc-crm.org/cidoc-crm/E55_Type",
+      "a": {},
+      "o": {},
+      "i": {
+        "http://www.cidoc-crm.org/cidoc-crm/P2i_is_type_of": [
+          "http://example.org/example-indy-style/SP-SO1-SU1002-01"
+        ]
+      },
+      "l_i18n": {
+        "de": "Amulett, mit geometrischem Dekor"
+      }
+    },
+    "https://www.wikidata.org/wiki/statuette": {
+      "l": "Statuett, anthropomorphic",
+      "t": "http://www.cidoc-crm.org/cidoc-crm/E55_Type",
+      "a": {},
+      "o": {},
+      "i": {
+        "http://www.cidoc-crm.org/cidoc-crm/P2i_is_type_of": [
+          "http://example.org/example-indy-style/SP-SO1-SU1002-02"
+        ]
+      },
+      "l_i18n": {
+        "de": "Statuette, antropomorph"
+      }
+    },
+    "http://example.org/example-indy-style/wadi_al_stirr": {
+      "l": "Wadi al-Sirr",
+      "t": "http://www.cidoc-crm.org/cidoc-crm/E27_Site",
+      "a": {},
+      "o": {
+        "http://www.cidoc-crm.org/cidoc-crm/P46_is_composed_of": [
+          "http://example.org/example-indy-style/the_secret_place"
+        ]
+      },
+      "i": {}
+    }
+  },
+  "node_types": {
+    "http://www.cidoc-crm.org/cidoc-crm/E27_Site": 2,
+    "http://www.cidoc-crm.org/cidoc-crm/E42_Identifier": 1,
+    "http://www.cidoc-crm.org/extensions/crmarchaeo/A9_Archaeological_Excavation": 1,
+    "http://www.cidoc-crm.org/extensions/crmsci/S20_Rigid_Physical_Feature": 1,
+    "http://www.cidoc-crm.org/extensions/crmarchaeo/A8_Stratigraphic_Unit#as:stratigraphical_unit": 2,
+    "http://www.cidoc-crm.org/cidoc-crm/E55_Type": 6,
+    "http://www.cidoc-crm.org/cidoc-crm/E19_Physical_Object": 4,
+    "http://www.cidoc-crm.org/cidoc-crm/E57_Material": 4
+  },
+  "edge_types": {
+    "http://www.cidoc-crm.org/cidoc-crm/P48_has_preferred_identifier": 1,
+    "http://www.cidoc-crm.org/extensions/crmarchaeo/AP3i_was_investigated_by": 1,
+    "http://www.cidoc-crm.org/cidoc-crm/P46_is_composed_of": 4,
+    "http://www.cidoc-crm.org/cidoc-crm/P2_has_type#as:has_interpretation": 2,
+    "http://www.cidoc-crm.org/cidoc-crm/P45_consists_of": 4,
+    "http://www.cidoc-crm.org/cidoc-crm/P2_has_type": 4,
+    "http://www.cidoc-crm.org/extensions/crmarchaeo/AP11_has_physical_relation_to#dot1:above": 1,
+    "http://www.cidoc-crm.org/extensions/crmarchaeo/AP11_has_physical_relation_to#dot1:below": 1,
+    "http://www.cidoc-crm.org/extensions/crmarchaeo/AP3_investigated": 1
+  },
+  "schema": {
+    "typeColors": {
+      "http://www.cidoc-crm.org/cidoc-crm/E19_Physical_Object": "#c78e66",
+      "http://www.cidoc-crm.org/cidoc-crm/E27_Site": "#c78e66",
+      "http://www.cidoc-crm.org/cidoc-crm/E42_Identifier": "#fef3ba",
+      "http://www.cidoc-crm.org/cidoc-crm/E55_Type": "#fab565",
+      "http://www.cidoc-crm.org/cidoc-crm/E57_Material": "#fab565",
+      "http://www.cidoc-crm.org/extensions/crmarchaeo/A8_Stratigraphic_Unit#as:stratigraphical_unit": "#c78e66",
+      "http://www.cidoc-crm.org/extensions/crmarchaeo/A9_Archaeological_Excavation": "#82ddff",
+      "http://www.cidoc-crm.org/extensions/crmsci/S20_Rigid_Physical_Feature": "#c78e66"
+    },
+    "typeLabels": {
+      "http://www.cidoc-crm.org/cidoc-crm/E19_Physical_Object": "Materieller Gegenstand",
+      "http://www.cidoc-crm.org/cidoc-crm/E27_Site": "Gelände",
+      "http://www.cidoc-crm.org/cidoc-crm/E42_Identifier": "Kennung",
+      "http://www.cidoc-crm.org/cidoc-crm/E55_Type": "Typus",
+      "http://www.cidoc-crm.org/cidoc-crm/E57_Material": "Material",
+      "http://www.cidoc-crm.org/extensions/crmarchaeo/A8_Stratigraphic_Unit#as:stratigraphical_unit": "Stratigraphical Unit",
+      "http://www.cidoc-crm.org/extensions/crmarchaeo/A9_Archaeological_Excavation": "Archaeological Excavation",
+      "http://www.cidoc-crm.org/extensions/crmsci/S20_Rigid_Physical_Feature": "Rigid Physical Feature"
+    },
+    "edgeLabels": {
+      "http://www.cidoc-crm.org/cidoc-crm/P2_has_type": "crm:P2_has_type",
+      "http://www.cidoc-crm.org/cidoc-crm/P2_has_type#as:has_interpretation": "has interpretation",
+      "http://www.cidoc-crm.org/cidoc-crm/P2i_is_type_of": "ist Typus von",
+      "http://www.cidoc-crm.org/cidoc-crm/P45_consists_of": "crm:P45_consists_of",
+      "http://www.cidoc-crm.org/cidoc-crm/P45i_is_incorporated_in": "ist enthalten in",
+      "http://www.cidoc-crm.org/cidoc-crm/P46_is_composed_of": "P46_is_composed_of",
+      "http://www.cidoc-crm.org/cidoc-crm/P46i_forms_part_of": "bildet Teil von",
+      "http://www.cidoc-crm.org/cidoc-crm/P48_has_preferred_identifier": "crm:P48_has_preferred_identifier",
+      "http://www.cidoc-crm.org/cidoc-crm/P48i_is_preferred_identifier_of": "ist bevorzugtes Kennzeichen für",
+      "http://www.cidoc-crm.org/extensions/crmarchaeo/AP11_has_physical_relation_to#dot1:above": "crmarchaeo:AP11_has_physical_relation_to (above)",
+      "http://www.cidoc-crm.org/extensions/crmarchaeo/AP11_has_physical_relation_to#dot1:below": "crmarchaeo:AP11_has_physical_relation_to (below)",
+      "http://www.cidoc-crm.org/extensions/crmarchaeo/AP3_investigated": "AP3_investigated",
+      "http://www.cidoc-crm.org/extensions/crmarchaeo/AP3i_was_investigated_by": "crmarchaeo:AP3i_was_investigated_by",
+      "is the interpretation of": "is the interpretation of"
+    },
+    "mainAttrs": {},
+    "typeLabelsI18n": {
+      "de": {
+        "http://www.cidoc-crm.org/cidoc-crm/E19_Physical_Object": "Materieller Gegenstand",
+        "http://www.cidoc-crm.org/cidoc-crm/E27_Site": "Gelände",
+        "http://www.cidoc-crm.org/cidoc-crm/E42_Identifier": "Kennung",
+        "http://www.cidoc-crm.org/cidoc-crm/E55_Type": "Typus",
+        "http://www.cidoc-crm.org/cidoc-crm/E57_Material": "Material",
+        "http://www.cidoc-crm.org/extensions/crmarchaeo/A8_Stratigraphic_Unit#as:stratigraphical_unit": "Stratigraphische Einheit"
+      }
+    },
+    "edgeLabelsI18n": {
+      "de": {
+        "http://www.cidoc-crm.org/cidoc-crm/P2_has_type": "hat den Typus",
+        "http://www.cidoc-crm.org/cidoc-crm/P2i_is_type_of": "ist Typus von",
+        "http://www.cidoc-crm.org/cidoc-crm/P45_consists_of": "besteht aus",
+        "http://www.cidoc-crm.org/cidoc-crm/P45i_is_incorporated_in": "ist enthalten in",
+        "http://www.cidoc-crm.org/cidoc-crm/P46_is_composed_of": "ist zusammengesetzt aus",
+        "http://www.cidoc-crm.org/cidoc-crm/P46i_forms_part_of": "bildet Teil von",
+        "http://www.cidoc-crm.org/cidoc-crm/P48_has_preferred_identifier": "hat bevorzugtes Kennzeichen",
+        "http://www.cidoc-crm.org/cidoc-crm/P48i_is_preferred_identifier_of": "ist bevorzugtes Kennzeichen für"
+      }
+    }
+  },
+  "languages": {
+    "primary": "en",
+    "additional": [
+      "de"
+    ]
+  }
+}

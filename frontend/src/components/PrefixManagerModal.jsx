@@ -167,7 +167,7 @@ export default function PrefixManagerModal({ prefixMap, idPrefix, onSave, onClos
             </div>
             <div style={{ fontSize:9, color:'var(--text-muted)', marginTop:6 }}>
               Click a prefix to prefill it below, then add the matching namespace URI.
-              Unresolved prefixes will not be correctly expanded in the RDF Pipeline.
+              Unresolved prefixes will not be correctly expanded on export.
             </div>
           </div>
         )}

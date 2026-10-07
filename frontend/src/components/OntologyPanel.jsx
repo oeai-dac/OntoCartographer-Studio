@@ -243,7 +243,7 @@ function HierarchyLine({ label, uri, depth = 0, isCurrent = false }) {
 }
 
 // ── Main OntologyPanel ────────────────────────────────────────────────────────
-export default function OntologyPanel({ onDragStart, widening, wideningParent = true }) {
+export default function OntologyPanel({ onDragStart, widening, wideningParent = true, toast }) {
   const [ontologies, setOntologies] = useState([])
   const [uploading, setUploading] = useState(false)
   const [backendOk, setBackendOk] = useState(null)
@@ -332,6 +332,15 @@ export default function OntologyPanel({ onDragStart, widening, wideningParent = 
         classes_indexed: result.classes_indexed,
         properties_indexed: result.properties_indexed,
       })
+      // A file that cannot be parsed is skipped by the backend; say so, or it
+      // simply never shows up in the list and nobody knows why.
+      const failed = (result.errors || []).map(er => er.file)
+      if (failed.length > 0) {
+        toast?.error(`Could not read ${failed.length === 1 ? 'ontology' : 'ontologies'}: ${failed.join(', ')} — is it valid RDF (Turtle, RDF/XML, N-Triples, N3)?`)
+      }
+      if (result.loaded?.length > 0) {
+        toast?.success(`${result.loaded.length} ${result.loaded.length === 1 ? 'ontology' : 'ontologies'} loaded · ${result.classes_indexed} classes, ${result.properties_indexed} properties`)
+      }
       // Fetch detected namespaces and broadcast to App
       try {
         const nsResult = await api.getNamespaces()
@@ -342,6 +351,7 @@ export default function OntologyPanel({ onDragStart, widening, wideningParent = 
       } catch (_) {}
     } catch (err) {
       console.error(err)
+      toast?.error('Loading ontologies failed: ' + err.message)
     } finally {
       setUploading(false)
       e.target.value = ''
@@ -588,7 +598,7 @@ export default function OntologyPanel({ onDragStart, widening, wideningParent = 
             ③ Object / Range
             {objects.length > 0 && (
               <span style={{ marginLeft: 6, color: 'var(--border-bright)', fontWeight: 400 }}>
-                ({objects.filter(o => o.is_direct_range).length} direct · {objects.filter(o => !o.is_direct_range).length} Subclasses)
+                ({objects.filter(o => o.is_direct_range).length} direct · {objects.filter(o => !o.is_direct_range).length} subclasses)
               </span>
             )}
           </label>
@@ -617,7 +627,7 @@ export default function OntologyPanel({ onDragStart, widening, wideningParent = 
               <span>{object.label}</span>
               {!object.is_direct_range && (
                 <span style={{ fontSize: 9, color: 'var(--text-muted)', background: 'var(--bg)', padding: '0 4px', borderRadius: 3, border: '1px solid var(--border)' }}>
-                  Subklasse
+                  subclass
                 </span>
               )}
               <span style={{ fontSize: 9, color: 'var(--text-muted)', marginLeft: 'auto' }}>drag</span>
@@ -656,7 +666,7 @@ export default function OntologyPanel({ onDragStart, widening, wideningParent = 
                 <span style={{ color: 'var(--border-bright)' }}>→</span>
                 <span style={{ color: 'var(--green)', fontFamily: 'var(--mono)' }}>{object.label}</span>
                 {!object.is_direct_range && (
-                  <span style={{ fontSize: 9, color: 'var(--text-muted)' }}>(Subklasse)</span>
+                  <span style={{ fontSize: 9, color: 'var(--text-muted)' }}>(subclass)</span>
                 )}
               </div>
             </div>

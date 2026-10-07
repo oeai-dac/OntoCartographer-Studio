@@ -17,7 +17,7 @@ try:
 except ImportError:
     RDFLIB_AVAILABLE = False
 
-app = FastAPI(title="OntoCartographer Studio API", version="2.0.0")
+app = FastAPI(title="OntoCartographer Studio API", version="3.1.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -80,6 +80,21 @@ def _preferred_literal(graph: Graph, uri_ref, predicate, lang_prefs=("de", "en",
                 return c
     # Fallback: return first available
     return candidates[0] if candidates else None
+
+
+def _literal_in_lang(graph: Graph, uri_ref, predicate, lang: str):
+    """Return the literal tagged with exactly `lang`, or None.
+
+    Deliberately strict, unlike _preferred_literal: when building a
+    per-language label map, a fallback would copy the same text into every
+    language and make an untranslated ontology look fully translated.
+    """
+    if not lang:
+        return None
+    for c in graph.objects(uri_ref, predicate):
+        if getattr(c, "language", None) == lang:
+            return c
+    return None
 
 
 def uri_to_dict(uri: str, graph: Graph, ns: dict) -> dict:
@@ -690,567 +705,8 @@ def list_namespaces():
     return {"namespaces": get_namespaces()}
 
 
-# ─── RDF Pipeline Endpoints (Table2RDF integration) ──────────────────────────
-
-import subprocess, tempfile, json as json_mod, re as re_mod, time as time_mod
-from pathlib import Path
-
-try:
-    import requests as http_requests
-    REQUESTS_AVAILABLE = True
-except ImportError:
-    REQUESTS_AVAILABLE = False
-
+# pydantic models for the export endpoints below
 from pydantic import BaseModel
-from typing import Optional as Opt
-
-
-class OntoRefineRequest(BaseModel):
-    tsv_content: str
-    project_name: str = "OntologyMapper_Export"
-    mapping_json: str = ""  # if empty, use built-in default
-    server_url: str = "http://localhost:7333"
-    jar_path: str = ""  # path to ontorefine-cli JAR; empty = auto-detect
-
-
-class GraphDBRequest(BaseModel):
-    project_id: str
-    server_url: str = "http://localhost:7200"
-    repo_id: str = ""
-    repo_title: str = ""
-    username: str = ""
-    password: str = ""
-    is_literals: bool = False
-
-
-class GraphDBRepoRequest(BaseModel):
-    server_url: str = "http://localhost:7200"
-    repo_id: str
-    repo_title: str = ""
-    ruleset: str = "rdfsplus-optimized"
-    username: str = ""
-    password: str = ""
-
-
-# ── Built-in Ontotext Refine mapping templates (from Table2RDF) ──────────────
-
-DEFAULT_MAPPING = {
-    "baseIRI": "http://example.com/base/",
-    "namespaces": {
-        "rdfs": "http://www.w3.org/2000/01/rdf-schema#",
-        "crm": "http://www.cidoc-crm.org/cidoc-crm/"
-    },
-    "subjectMappings": [
-        {
-            "propertyMappings": [
-                {
-                    "property": {
-                        "transformation": {"expression": "rdfs", "language": "prefix"},
-                        "valueSource": {"source": "constant", "constant": "label"}
-                    },
-                    "values": [{
-                        "valueSource": {"columnName": "domain_label", "source": "column"},
-                        "valueType": {"type": "language_literal", "language": {"valueSource": {"source": "constant", "constant": "en"}}}
-                    }]
-                },
-                {
-                    "property": {
-                        "transformation": {"expression": "crm", "language": "prefix"},
-                        "valueSource": {"source": "constant", "constant": "P3_has_note"}
-                    },
-                    "values": [{
-                        "valueSource": {"columnName": "p3_has_note", "source": "column"},
-                        "valueType": {"type": "literal"}
-                    }]
-                }
-            ],
-            "subject": {"transformation": {"language": "raw"}, "valueSource": {"columnName": "id_of_domain_uri", "source": "column"}},
-            "typeMappings": [{"transformation": {"language": "raw"}, "valueSource": {"columnName": "class_of_domain_uri", "source": "column"}}]
-        },
-        {
-            "propertyMappings": [
-                {
-                    "property": {
-                        "transformation": {"expression": "rdfs", "language": "prefix"},
-                        "valueSource": {"source": "constant", "constant": "label"}
-                    },
-                    "values": [{
-                        "valueSource": {"columnName": "range_label", "source": "column"},
-                        "valueType": {"type": "language_literal", "language": {"valueSource": {"source": "constant", "constant": "en"}}}
-                    }]
-                }
-            ],
-            "subject": {"transformation": {"language": "raw"}, "valueSource": {"columnName": "id_of_the_range_uri", "source": "column"}},
-            "typeMappings": [{"transformation": {"language": "raw"}, "valueSource": {"columnName": "class_of_the_range_uri", "source": "column"}}]
-        },
-        {
-            "propertyMappings": [{
-                "property": {"transformation": {"language": "raw"}, "valueSource": {"columnName": "property_uri", "source": "column"}},
-                "values": [{
-                    "transformation": {"language": "raw"},
-                    "valueSource": {"columnName": "id_of_the_range_uri", "source": "column"},
-                    "valueType": {"propertyMappings": [], "type": "iri", "typeMappings": []}
-                }]
-            }],
-            "subject": {"transformation": {"language": "raw"}, "valueSource": {"columnName": "id_of_domain_uri", "source": "column"}},
-            "typeMappings": []
-        },
-        {
-            "propertyMappings": [{
-                "property": {"transformation": {"language": "raw"}, "valueSource": {"columnName": "dot_one_uri", "source": "column"}},
-                "values": [{
-                    "transformation": {"language": "raw"},
-                    "valueSource": {"columnName": "dot_one_target_uri", "source": "column"},
-                    "valueType": {"propertyMappings": [], "type": "iri", "typeMappings": []}
-                }]
-            }],
-            "subject": {"transformation": {"language": "raw"}, "valueSource": {"columnName": "i4_uri", "source": "column"}},
-            "typeMappings": []
-        }
-    ]
-}
-
-DEFAULT_LITERAL_MAPPING = {
-    "baseIRI": "http://example.com/base/",
-    "namespaces": {
-        "rdfs": "http://www.w3.org/2000/01/rdf-schema#",
-        "crm": "http://www.cidoc-crm.org/cidoc-crm/"
-    },
-    "subjectMappings": [
-        {
-            "propertyMappings": [
-                {
-                    "property": {
-                        "transformation": {"expression": "rdfs", "language": "prefix"},
-                        "valueSource": {"source": "constant", "constant": "label"}
-                    },
-                    "values": [{
-                        "valueSource": {"columnName": "domain_label", "source": "column"},
-                        "valueType": {"type": "language_literal", "language": {"valueSource": {"source": "constant", "constant": "en"}}}
-                    }]
-                },
-                {
-                    "property": {
-                        "transformation": {"expression": "crm", "language": "prefix"},
-                        "valueSource": {"source": "constant", "constant": "P3_has_note"}
-                    },
-                    "values": [{
-                        "valueSource": {"columnName": "p3_has_note", "source": "column"},
-                        "valueType": {"type": "literal"}
-                    }]
-                }
-            ],
-            "subject": {"transformation": {"language": "raw"}, "valueSource": {"columnName": "id_of_domain_uri", "source": "column"}},
-            "typeMappings": [{"transformation": {"language": "raw"}, "valueSource": {"columnName": "class_of_domain_uri", "source": "column"}}]
-        },
-        {
-            "propertyMappings": [{
-                "property": {"transformation": {"language": "raw"}, "valueSource": {"columnName": "property_uri", "source": "column"}},
-                "values": [{
-                    "transformation": {"language": "raw"},
-                    "valueSource": {"columnName": "id_of_the_range_uri", "source": "column"},
-                    "valueType": {
-                        "type": "datatype_literal",
-                        "datatype": {"transformation": {"language": "raw"}, "valueSource": {"columnName": "class_of_the_range_uri", "source": "column"}}
-                    }
-                }]
-            }],
-            "subject": {"transformation": {"language": "raw"}, "valueSource": {"columnName": "id_of_domain_uri", "source": "column"}},
-            "typeMappings": []
-        },
-        {
-            "propertyMappings": [{
-                "property": {"transformation": {"language": "raw"}, "valueSource": {"columnName": "dot_one_uri", "source": "column"}},
-                "values": [{
-                    "transformation": {"language": "raw"},
-                    "valueSource": {"columnName": "dot_one_target_uri", "source": "column"},
-                    "valueType": {"propertyMappings": [], "type": "iri", "typeMappings": []}
-                }]
-            }],
-            "subject": {"transformation": {"language": "raw"}, "valueSource": {"columnName": "i4_uri", "source": "column"}},
-            "typeMappings": []
-        }
-    ]
-}
-
-
-# ── SPARQL templates (from Table2RDF) ────────────────────────────────────────
-
-SPARQL_TRIPLES = r'''
-#SPARQL for triples
-BASE <http://example.com/base/>
-PREFIX mapper: <http://www.ontotext.com/mapper/>
-PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-PREFIX crm: <http://www.cidoc-crm.org/cidoc-crm/>
-INSERT { GRAPH ?s4  {
-?s1 a ?t_s1 ;
-    rdfs:label ?o_label ;
-    crm:P3\_has\_note ?o_P3_has_note .
-?s2 a ?t_s2 ;
-    rdfs:label ?o_label_2 .
-?s3 ?p_property_uri ?o_property_uri .
-<<?s3 ?p_property_uri ?o_property_uri>> ?p_dot_one_uri ?o_dot_one_uri .
-    }} WHERE {
-SERVICE <http://localhost:7333/repositories/ontorefine:{PROJECT_ID}>  {
-    BIND(IRI(?c_id_of_domain_uri) as ?s1)
-    BIND(IRI(?c_class_of_domain_uri) as ?t_s1)
-    BIND(STRLANG(?c_domain_label, "en") as ?o_label)
-    BIND(STR(?c_p3_has_note) as ?o_P3_has_note)
-    BIND(IRI(?c_id_of_the_range_uri) as ?s2)
-    BIND(IRI(?c_class_of_the_range_uri) as ?t_s2)
-    BIND(STRLANG(?c_range_label, "en") as ?o_label_2)
-    BIND(IRI(?c_id_of_domain_uri) as ?s3)
-    BIND(IRI(?c_property_uri) as ?p_property_uri)
-    BIND(IRI(?c_id_of_the_range_uri) as ?o_property_uri)
-    BIND(IRI(?c_i4_uri) as ?s4)
-    BIND(IRI(?c_dot_one_uri) as ?p_dot_one_uri)
-    BIND(IRI(?c_dot_one_target_uri) as ?o_dot_one_uri)
-}
-}
-'''
-
-SPARQL_TRIPLES_LITERALS = r'''
-#SPARQL for triples with literals
-BASE <http://example.com/base/>
-PREFIX mapper: <http://www.ontotext.com/mapper/>
-PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-PREFIX crm: <http://www.cidoc-crm.org/cidoc-crm/>
-INSERT { GRAPH ?s3  {
-?s1 a ?t_s1 ;
-    rdfs:label ?o_label ;
-    crm:P3\_has\_note ?o_P3_has_note .
-?s2 ?p_property_uri ?o_property_uri .
-    }} WHERE {
-SERVICE <http://localhost:7333/repositories/ontorefine:{PROJECT_ID}>  {
-    BIND(IRI(?c_id_of_domain_uri) as ?s1)
-    BIND(IRI(?c_class_of_domain_uri) as ?t_s1)
-    BIND(STRLANG(?c_domain_label, "en") as ?o_label)
-    BIND(STR(?c_p3_has_note) as ?o_P3_has_note)
-    BIND(IRI(?c_id_of_domain_uri) as ?s2)
-    BIND(IRI(?c_property_uri) as ?p_property_uri)
-    BIND(STRDT(?c_id_of_the_range_uri, IRI(?c_class_of_the_range_uri)) as ?o_property_uri)
-    BIND(IRI(?c_i4_uri) as ?s3)
-    BIND(IRI(?c_dot_one_uri) as ?p_dot_one_uri)
-    BIND(IRI(?c_dot_one_target_uri) as ?o_dot_one_uri)
-}
-}
-'''
-
-
-def _find_jar(custom_path: str = "") -> str:
-    """Locate ontorefine-cli JAR: custom path > same dir > common locations."""
-    if custom_path and Path(custom_path).is_file():
-        return custom_path
-    jar_name = "ontorefine-cli-1.2.1-jar-with-dependencies.jar"
-    # Check same directory as this script
-    local = Path(__file__).parent / jar_name
-    if local.is_file():
-        return str(local)
-    # Check common locations
-    for d in [Path.cwd(), Path.home(), Path("C:/CRM"), Path("/opt/ontorefine")]:
-        p = d / jar_name
-        if p.is_file():
-            return str(p)
-    return ""
-
-
-@app.post("/pipeline/ontorefine")
-def run_ontorefine(req: OntoRefineRequest):
-    """
-    Create an Ontotext Refine project from TSV content and apply a mapping.
-    Steps: write TSV to temp file → java -jar create → java -jar apply mapping
-    Returns the Ontotext Refine project ID.
-    """
-    jar = _find_jar(req.jar_path)
-    if not jar:
-        raise HTTPException(400, "ontorefine-cli JAR nicht gefunden. Bitte Pfad angeben oder JAR neben backend/main.py ablegen.")
-
-    # Write TSV content to temp file
-    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".tsv", mode="w", encoding="utf-8")
-    tmp.write(req.tsv_content)
-    tmp.close()
-
-    try:
-        # 1. Create project
-        cmd_create = [
-            "java", "-jar", jar, "create",
-            "--url", req.server_url,
-            "--name", req.project_name,
-            tmp.name
-        ]
-        result = subprocess.run(cmd_create, capture_output=True, text=True, timeout=60)
-        if result.returncode != 0:
-            raise HTTPException(500, f"Ontotext Refine Projekt konnte nicht erstellt werden:\n{result.stderr}")
-
-        match = re_mod.search(r"Successfully created project with identifier: (\d+)", result.stdout)
-        if not match:
-            raise HTTPException(500, f"Projekt erstellt, aber ID nicht gefunden. Output:\n{result.stdout}")
-        project_id = match.group(1)
-
-        # 2. Apply mapping
-        mapping_data = req.mapping_json if req.mapping_json else json_mod.dumps(DEFAULT_MAPPING)
-        tmp_map = tempfile.NamedTemporaryFile(delete=False, suffix=".json", mode="w", encoding="utf-8")
-        tmp_map.write(mapping_data)
-        tmp_map.close()
-
-        cmd_apply = [
-            "java", "-jar", jar, "apply",
-            "--url", req.server_url,
-            mapping_data if Path(mapping_data).is_file() else tmp_map.name,
-            project_id
-        ]
-        # Fix: always use the temp file path
-        cmd_apply = [
-            "java", "-jar", jar, "apply",
-            "--url", req.server_url,
-            tmp_map.name,
-            project_id
-        ]
-        result2 = subprocess.run(cmd_apply, capture_output=True, text=True, timeout=60)
-
-        return {
-            "project_id": project_id,
-            "project_name": req.project_name,
-            "create_output": result.stdout,
-            "apply_output": result2.stdout,
-            "apply_error": result2.stderr if result2.returncode != 0 else "",
-        }
-    except subprocess.TimeoutExpired:
-        raise HTTPException(504, "Ontotext Refine Timeout – läuft der Service?")
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(500, str(e))
-    finally:
-        Path(tmp.name).unlink(missing_ok=True)
-
-
-@app.post("/pipeline/ontorefine-literals")
-def run_ontorefine_literals(req: OntoRefineRequest):
-    """Same as /pipeline/ontorefine but uses the LITERAL mapping template."""
-    jar = _find_jar(req.jar_path)
-    if not jar:
-        raise HTTPException(400, "ontorefine-cli JAR nicht gefunden.")
-
-    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".tsv", mode="w", encoding="utf-8")
-    tmp.write(req.tsv_content)
-    tmp.close()
-
-    try:
-        cmd_create = [
-            "java", "-jar", jar, "create",
-            "--url", req.server_url,
-            "--name", req.project_name + "_literals",
-            tmp.name
-        ]
-        result = subprocess.run(cmd_create, capture_output=True, text=True, timeout=60)
-        if result.returncode != 0:
-            raise HTTPException(500, f"Ontotext Refine (literals) fehlgeschlagen:\n{result.stderr}")
-
-        match = re_mod.search(r"Successfully created project with identifier: (\d+)", result.stdout)
-        if not match:
-            raise HTTPException(500, f"Projekt erstellt, aber ID nicht gefunden. Output:\n{result.stdout}")
-        project_id = match.group(1)
-
-        mapping_data = req.mapping_json if req.mapping_json else json_mod.dumps(DEFAULT_LITERAL_MAPPING)
-        tmp_map = tempfile.NamedTemporaryFile(delete=False, suffix=".json", mode="w", encoding="utf-8")
-        tmp_map.write(mapping_data)
-        tmp_map.close()
-
-        cmd_apply = [
-            "java", "-jar", jar, "apply",
-            "--url", req.server_url,
-            tmp_map.name,
-            project_id
-        ]
-        result2 = subprocess.run(cmd_apply, capture_output=True, text=True, timeout=60)
-
-        return {
-            "project_id": project_id,
-            "project_name": req.project_name + "_literals",
-            "create_output": result.stdout,
-            "apply_output": result2.stdout,
-            "apply_error": result2.stderr if result2.returncode != 0 else "",
-        }
-    except subprocess.TimeoutExpired:
-        raise HTTPException(504, "Ontotext Refine Timeout")
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(500, str(e))
-    finally:
-        Path(tmp.name).unlink(missing_ok=True)
-
-
-@app.get("/pipeline/graphdb/repos")
-def list_graphdb_repos(server_url: str = "http://localhost:7200", username: str = "", password: str = ""):
-    """List all GraphDB repositories."""
-    if not REQUESTS_AVAILABLE:
-        raise HTTPException(500, "Python 'requests' Paket nicht installiert")
-    auth = (username, password) if username or password else None
-    try:
-        r = http_requests.get(
-            f"{server_url.rstrip('/')}/repositories",
-            headers={"Accept": "application/sparql-results+json"},
-            auth=auth, timeout=20
-        )
-        if r.status_code != 200:
-            raise HTTPException(r.status_code, f"GraphDB Fehler: {r.text[:500]}")
-        data = r.json()
-        bindings = data.get("results", {}).get("bindings", [])
-        repos = []
-        for b in bindings:
-            rid = (b.get("id", {}) or b.get("ID", {})).get("value", "")
-            if rid:
-                repos.append(rid)
-        return {"repos": sorted(repos)}
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(500, f"GraphDB nicht erreichbar: {e}")
-
-
-@app.post("/pipeline/graphdb/create-repo")
-def create_graphdb_repo(req: GraphDBRepoRequest):
-    """Create a new GraphDB repository."""
-    if not REQUESTS_AVAILABLE:
-        raise HTTPException(500, "Python 'requests' Paket nicht installiert")
-
-    # Escape every user-supplied value before it goes into the Turtle config,
-    # otherwise a stray quote in the repo id / title / ruleset can break the
-    # config string or inject additional Turtle statements.
-    def _ttl_esc(s: str) -> str:
-        return (str(s).replace("\\", "\\\\").replace('"', '\\"')
-                .replace("\n", "\\n").replace("\r", ""))
-    _repo_id  = _ttl_esc(req.repo_id)
-    _label    = _ttl_esc(req.repo_title or req.repo_id)
-    _ruleset  = _ttl_esc(req.ruleset)
-
-    ttl = f"""@prefix rep:   <http://www.openrdf.org/config/repository#> .
-@prefix rdfs:  <http://www.w3.org/2000/01/rdf-schema#> .
-@prefix sr:    <http://www.openrdf.org/config/repository/sail#> .
-@prefix sail:  <http://www.openrdf.org/config/sail#> .
-@prefix graphdb: <http://www.ontotext.com/config/graphdb#> .
-@prefix owlim: <http://www.ontotext.com/trree/owlim#> .
-
-[] a rep:Repository ;
-rep:repositoryID "{_repo_id}" ;
-rdfs:label "{_label}" ;
-rep:repositoryImpl [
-    rep:repositoryType "graphdb:SailRepository" ;
-    sr:sailImpl [
-        sail:sailType "owlim:Sail" ;
-        owlim:ruleset "{_ruleset}" ;
-        owlim:base-URL "http://example.org/" ;
-        owlim:disable-sameAs "true" ;
-        owlim:enable-context-index "true" ;
-        owlim:storage-folder ""
-    ]
-] .
-"""
-    auth = (req.username, req.password) if req.username or req.password else None
-    url = f"{req.server_url.rstrip('/')}/rest/repositories"
-    try:
-        r = http_requests.post(
-            url,
-            files={"config": ("config.ttl", ttl.encode("utf-8"), "text/turtle")},
-            headers={"X-Requested-With": "XMLHttpRequest"},
-            auth=auth, timeout=30
-        )
-        if r.status_code in (201, 204):
-            return {"success": True, "repo_id": req.repo_id}
-        raise HTTPException(r.status_code, f"Repository anlegen fehlgeschlagen: {r.text[:500]}")
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(500, str(e))
-
-
-@app.delete("/pipeline/graphdb/repo/{repo_id}")
-def delete_graphdb_repo(repo_id: str, server_url: str = "http://localhost:7200", username: str = "", password: str = ""):
-    """Delete a GraphDB repository."""
-    if not REQUESTS_AVAILABLE:
-        raise HTTPException(500, "Python 'requests' Paket nicht installiert")
-    from urllib.parse import quote
-    auth = (username, password) if username or password else None
-    url = f"{server_url.rstrip('/')}/rest/repositories/{quote(repo_id, safe='')}"
-    try:
-        r = http_requests.delete(url, headers={"X-Requested-With": "XMLHttpRequest"}, auth=auth, timeout=30)
-        if r.status_code in (200, 204):
-            return {"success": True}
-        raise HTTPException(r.status_code, f"Löschen fehlgeschlagen: {r.text[:500]}")
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(500, str(e))
-
-
-@app.post("/pipeline/graphdb/import")
-def import_to_graphdb(req: GraphDBRequest):
-    """Execute SPARQL INSERT to load triples from Ontotext Refine into GraphDB."""
-    if not REQUESTS_AVAILABLE:
-        raise HTTPException(500, "Python 'requests' Paket nicht installiert")
-
-    # project_id is substituted into the SPARQL SERVICE URL below; Ontotext
-    # Refine project ids are always numeric, so reject anything else instead
-    # of letting arbitrary text into the query (SPARQL injection guard).
-    if not re_mod.fullmatch(r"\d+", (req.project_id or "").strip()):
-        raise HTTPException(400, "Ungültige Ontotext-Refine project_id (nur Ziffern erlaubt).")
-
-    auth = (req.username, req.password) if req.username or req.password else None
-    server = req.server_url.rstrip('/')
-
-    # Ensure repo exists, create if needed
-    try:
-        repos_r = http_requests.get(
-            f"{server}/repositories",
-            headers={"Accept": "application/sparql-results+json"},
-            auth=auth, timeout=20
-        )
-        existing = set()
-        if repos_r.status_code == 200:
-            for b in repos_r.json().get("results", {}).get("bindings", []):
-                rid = (b.get("id", {}) or b.get("ID", {})).get("value", "")
-                if rid: existing.add(rid)
-
-        repo_id = req.repo_id
-        if not repo_id:
-            repo_id = re_mod.sub(r"[^A-Za-z0-9_\-]", "_", req.repo_title or f"KG_{req.project_id}")
-
-        if repo_id not in existing:
-            create_req = GraphDBRepoRequest(
-                server_url=req.server_url, repo_id=repo_id,
-                repo_title=req.repo_title or repo_id,
-                username=req.username, password=req.password,
-            )
-            create_graphdb_repo(create_req)
-            time_mod.sleep(0.6)
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(500, f"Repository-Check fehlgeschlagen: {e}")
-
-    # Build SPARQL update
-    template = SPARQL_TRIPLES_LITERALS if req.is_literals else SPARQL_TRIPLES
-    sparql = template.replace("{PROJECT_ID}", req.project_id)
-
-    endpoint = f"{server}/repositories/{repo_id}/statements"
-    headers = {
-        "Content-Type": "application/sparql-update; charset=UTF-8",
-        "Accept": "application/sparql-results+json"
-    }
-    try:
-        resp = http_requests.post(
-            endpoint, data=sparql.encode("utf-8"),
-            headers=headers, auth=auth, timeout=90
-        )
-        if resp.status_code in (200, 204):
-            return {"success": True, "repo_id": repo_id, "project_id": req.project_id, "is_literals": req.is_literals}
-        raise HTTPException(resp.status_code, f"SPARQL INSERT fehlgeschlagen: {resp.text[:500]}")
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(500, str(e))
 
 
 # ─── RDF/XML Export (local, no external tools needed) ────────────────────────
@@ -1259,6 +715,31 @@ class RdfExportRequest(BaseModel):
     uri_tsv: str          # TSV content for URI triples
     literal_tsv: str = "" # TSV content for literal triples
     format: str = "xml"   # xml, turtle, n3, nt, jsonld
+    # Language of the plain `domain_label` / `range_label` columns. Defaults to
+    # "en" so a caller that predates language support — a replayed TSV, a
+    # script — gets exactly the output it always got. An empty string means
+    # "write the label without a language tag".
+    primary_lang: str = "en"
+    # Languages carried in the additional `<column>@<tag>` columns.
+    additional_langs: list = []
+
+
+def _label_literals(row: dict, base: str, primary_lang: str, additional_langs: list) -> list:
+    """Every language variant of one label column, as (text, lang) pairs.
+
+    The plain column holds the primary language, `<base>@<tag>` the others —
+    which is why a single-language export produces exactly the same triples it
+    did before this existed.
+    """
+    out = []
+    main = (row.get(base, "") or "").strip()
+    if main:
+        out.append((main, primary_lang or None))
+    for lang in (additional_langs or []):
+        text = (row.get(f"{base}@{lang}", "") or "").strip()
+        if text:
+            out.append((text, lang))
+    return out
 
 
 def _safe_uri(val: str) -> str:
@@ -1426,14 +907,15 @@ def export_rdf(req: RdfExportRequest):
 
         if class_ref:
             _add(g, domain_ref, RDF.type, class_ref)
-        if domain_label:
-            _add(g, domain_ref, RDFS.label, Literal(domain_label, lang="en"))
+        for text, lang in _label_literals(row, "domain_label", req.primary_lang, req.additional_langs):
+            _add(g, domain_ref, RDFS.label, Literal(text, lang=lang))
         if p3_note:
             _add(g, domain_ref, CRM.P3_has_note, Literal(p3_note))
         if range_ref and range_class_ref:
             _add(g, range_ref, RDF.type, range_class_ref)
-        if range_ref and range_label:
-            _add(g, range_ref, RDFS.label, Literal(range_label, lang="en"))
+        if range_ref:
+            for text, lang in _label_literals(row, "range_label", req.primary_lang, req.additional_langs):
+                _add(g, range_ref, RDFS.label, Literal(text, lang=lang))
         if prop_ref and range_ref:
             _add(g, domain_ref, prop_ref, range_ref)
         elif prop_ref and not range_ref and range_label:
@@ -1478,8 +960,8 @@ def export_rdf(req: RdfExportRequest):
 
         if class_ref:
             _add(g, domain_ref, RDF.type, class_ref)
-        if domain_label:
-            _add(g, domain_ref, RDFS.label, Literal(domain_label, lang="en"))
+        for text, lang in _label_literals(row, "domain_label", req.primary_lang, req.additional_langs):
+            _add(g, domain_ref, RDFS.label, Literal(text, lang=lang))
         if p3_note:
             _add(g, domain_ref, CRM.P3_has_note, Literal(p3_note))
         if prop_ref and range_value:
@@ -1701,6 +1183,12 @@ class GraphExplorerRequest(BaseModel):
     type_colors: dict = {}   # { typeUri: hexColor }
     type_labels: dict = {}   # { typeUri: humanLabel }
     edge_labels: dict = {}   # { edgeUri: humanLabel }
+    # Label languages. The primary one fills the existing single-value fields
+    # (`l`, `typeLabels`, `edgeLabels`); the additional ones fill the parallel
+    # *I18n maps. An Explorer that does not know about them reads exactly what
+    # it always read.
+    primary_lang: str = "en"
+    additional_langs: list = []
 
 
 # CIDOC CRM anchor colors (same as frontend cidocColors.js)
@@ -1809,8 +1297,23 @@ def _dot_one_raw_text(value: str) -> str:
 
 def _dot_one_canon(text: str) -> str:
     """Fold umlauts + lowercase -- the key used for matching/grouping so
-    spelling variants (über/ueber) merge into a single edge-type group."""
-    return text.strip().lower().translate(_UMLAUT_FOLD)
+    spelling variants (über/ueber) merge into a single edge-type group.
+
+    Qualifier URIs are often minted as "<column prefix>_<value>" (e.g.
+    .../oeai/Relationstyp_above -> "relationstyp above"). When the full text
+    is not known vocabulary but a trailing part of it is, that trailing part
+    is used, so the value is still recognised and correctly inverted
+    (above/below) instead of the same unknown word being shown in both
+    directions."""
+    canon = text.strip().lower().translate(_UMLAUT_FOLD)
+    if canon in _DOT_ONE_VOCAB:
+        return canon
+    words = canon.split()
+    for i in range(1, len(words)):
+        tail = " ".join(words[i:])
+        if tail in _DOT_ONE_VOCAB:
+            return tail
+    return canon
 
 
 def _dot_one_label(text: str) -> str:
@@ -1874,19 +1377,29 @@ def export_graph_explorer_json(req: GraphExplorerRequest):
     # CIDOC class, which the RDF export continues to use unchanged.
     type_base_class: dict = {}      # synthetic type key -> original CIDOC class URI (for color lookup)
     explorer_type_labels: dict = {} # synthetic type key -> custom label
+    # synthetic type key -> { lang: custom label }. The type KEY still derives
+    # from the primary-language name only, so switching the display language in
+    # the Explorer renames the groups without regrouping the nodes.
+    explorer_type_labels_i18n: dict = {}
 
-    def _resolve_type_key(class_uri: str, explorer_label: str) -> str:
+    add_langs = [l for l in (req.additional_langs or []) if l and l != req.primary_lang]
+
+    def _resolve_type_key(class_uri: str, explorer_label: str, explorer_label_i18n: dict = None) -> str:
         if not class_uri or not explorer_label:
             return class_uri
         key = f"{class_uri}#as:{_slugify(explorer_label)}"
         type_base_class[key] = class_uri
         explorer_type_labels[key] = explorer_label
+        for lang, text in (explorer_label_i18n or {}).items():
+            if text:
+                explorer_type_labels_i18n.setdefault(lang, {})[key] = text
         return key
 
-    def ensure_node(uri: str, class_uri: str = "", label: str = "", explorer_label: str = "") -> dict:
+    def ensure_node(uri: str, class_uri: str = "", label: str = "", explorer_label: str = "",
+                    label_i18n: dict = None, explorer_label_i18n: dict = None) -> dict:
         if not uri:
             return {}
-        type_key = _resolve_type_key(class_uri, explorer_label)
+        type_key = _resolve_type_key(class_uri, explorer_label, explorer_label_i18n)
         if uri not in nodes:
             nodes[uri] = {"l": label or _get_local(uri), "t": type_key or "", "a": {}, "o": {}, "i": {}}
         nd = nodes[uri]
@@ -1894,7 +1407,24 @@ def export_graph_explorer_json(req: GraphExplorerRequest):
             nd["l"] = label
         if type_key and not nd["t"]:
             nd["t"] = type_key
+        # Additive: the key only appears on nodes that actually have a
+        # translation, so a monolingual export is byte-identical to before.
+        for lang, text in (label_i18n or {}).items():
+            if not text:
+                continue
+            bucket = nd.setdefault("l_i18n", {})
+            if not bucket.get(lang):
+                bucket[lang] = text
         return nd
+
+    def _row_i18n(row: dict, base: str) -> dict:
+        """The `<base>@<tag>` cells of one row, empties dropped."""
+        out = {}
+        for lang in add_langs:
+            text = (row.get(f"{base}@{lang}", "") or "").strip()
+            if text:
+                out[lang] = text
+        return out
 
     inverse_of = ontology_store.get("_inverse_of", {})
     dot_one_edge_labels: dict = {}   # synthetic edge key -> precomputed label
@@ -2042,7 +1572,12 @@ def export_graph_explorer_json(req: GraphExplorerRequest):
 
         if not d_uri:
             continue
-        d_nd = ensure_node(d_uri, d_class, d_label, d_explorer_label)
+        d_label_i18n    = _row_i18n(row, "domain_label")
+        r_label_i18n    = _row_i18n(row, "range_label")
+        d_explorer_i18n = _row_i18n(row, "domain_explorer_label")
+        r_explorer_i18n = _row_i18n(row, "range_explorer_label")
+        d_nd = ensure_node(d_uri, d_class, d_label, d_explorer_label,
+                           d_label_i18n, d_explorer_i18n)
         if p3_note:
             d_nd["a"]["note"] = p3_note
 
@@ -2058,7 +1593,8 @@ def export_graph_explorer_json(req: GraphExplorerRequest):
                 base_key=(r_explorer_label or prop_explorer_label or _get_local(prop) or "value"),
             )
         elif r_uri:
-            ensure_node(r_uri, r_class, r_label, r_explorer_label)
+            ensure_node(r_uri, r_class, r_label, r_explorer_label,
+                        r_label_i18n, r_explorer_i18n)
             if dot_one_target:
                 # Dot-One annotated edge (e.g. AP11_has_physical_relation_to
                 # .1 AP11.1_has_type "above"): split the base property into
@@ -2142,6 +1678,8 @@ def export_graph_explorer_json(req: GraphExplorerRequest):
     schema_type_colors: dict = {}
     schema_type_labels: dict = {}
     schema_edge_labels: dict = {}
+    schema_type_labels_i18n: dict = {}   # { lang: { typeKey: label } }
+    schema_edge_labels_i18n: dict = {}   # { lang: { edgeUri: label } }
 
     for idx, t_uri in enumerate(sorted(type_counts.keys())):
         # A synthetic Explorer-labelled key (".../E55_Type#as:material") isn't
@@ -2165,6 +1703,20 @@ def export_graph_explorer_json(req: GraphExplorerRequest):
         else:
             schema_type_labels[t_uri] = _humanise(color_lookup_uri)
 
+        # Same precedence per additional language: the user's Explorer name in
+        # that language first, then an rdfs:label carrying exactly that tag.
+        # Nothing is written when neither exists — the Explorer then falls back
+        # to the primary label rather than showing the same text twice under
+        # two language headings.
+        for lang in add_langs:
+            text = explorer_type_labels_i18n.get(lang, {}).get(t_uri)
+            if not text and g:
+                from rdflib import URIRef as RDFURIRef
+                lit = _literal_in_lang(g, RDFURIRef(color_lookup_uri), RDFS.label, lang)
+                text = str(lit) if lit else None
+            if text:
+                schema_type_labels_i18n.setdefault(lang, {})[t_uri] = text
+
     # Label every edge type actually used in the graph (both the forward
     # properties counted in edge_counts and any inverse properties that only
     # show up on the "i" side via owl:inverseOf resolution above).
@@ -2175,6 +1727,15 @@ def export_graph_explorer_json(req: GraphExplorerRequest):
 
     for e_uri in sorted(all_edge_uris):
         schema_edge_labels[e_uri] = resolve_edge_label(e_uri)
+        # Edges carry no per-language user text — an Explorer name on an edge
+        # names a property, and the Explorer groups by it, so it stays single.
+        # A translated edge caption can therefore only come from the ontology.
+        if g and add_langs:
+            from rdflib import URIRef as RDFURIRef
+            for lang in add_langs:
+                lit = _literal_in_lang(g, RDFURIRef(e_uri), RDFS.label, lang)
+                if lit:
+                    schema_edge_labels_i18n.setdefault(lang, {})[e_uri] = str(lit)
     # Dot-One synthetic keys aren't real ontology URIs -- always use the
     # precomputed "base property (qualifier)" label rather than the generic
     # ontology/humanise fallback above.
@@ -2202,4 +1763,61 @@ def export_graph_explorer_json(req: GraphExplorerRequest):
             "mainAttrs":  {},   # can be extended in future
         },
     }
+    # Only present once the project actually has more than one language, so a
+    # monolingual export keeps the exact shape the Explorer reads today.
+    if add_langs:
+        result["languages"] = {"primary": req.primary_lang, "additional": add_langs}
+        if schema_type_labels_i18n:
+            result["schema"]["typeLabelsI18n"] = schema_type_labels_i18n
+        if schema_edge_labels_i18n:
+            result["schema"]["edgeLabelsI18n"] = schema_edge_labels_i18n
     return result
+
+
+# ─── Graph Import (existing RDF / Graph-Explorer JSON → canvas model) ─────────
+
+@app.post("/import/graph")
+async def import_graph(file: UploadFile = File(...)):
+    """
+    Import an existing INSTANCE graph and return it lifted onto the Studio's
+    schema model: one class group per rdf:type (with its instances as a
+    synthetic table), plus the relation and literal patterns between them.
+
+    The frontend turns each group into an ordinary mapped node, so everything
+    downstream — re-classing, re-connecting, verification, RDF and Graph
+    Explorer export — runs through the existing code paths unchanged.
+    """
+    import json as _json
+    import graph_import as gi
+
+    if not RDFLIB_AVAILABLE:
+        raise HTTPException(500, "rdflib not installed. Run: pip install rdflib")
+
+    content = await file.read()
+    if not content:
+        raise HTTPException(400, "Empty file.")
+    filename = file.filename or "import"
+
+    # The ontology (when loaded) only sharpens the result: it resolves the most
+    # specific rdf:type for multi-typed resources and supplies prefixed labels.
+    superclasses = ontology_store.get("_superclasses", {})
+    ns = get_namespaces() if ontology_store.get("merged") is not None else {}
+
+    def prefix_label(uri: str) -> str:
+        return get_prefix_label(uri, ns)
+
+    try:
+        if filename.lower().endswith(".json"):
+            try:
+                data = _json.loads(content.decode("utf-8", errors="replace"))
+            except Exception as exc:
+                raise HTTPException(400, f"Invalid JSON: {exc}")
+            # A Studio PROJECT file is also .json — say so explicitly instead of
+            # failing on the differently shaped 'nodes' field.
+            if isinstance(data, dict) and isinstance(data.get("nodes"), list):
+                raise HTTPException(400, "This is a Studio project file — open it with 'Load', not 'Import graph'.")
+            return gi.import_graph_json(data, get_local_name, prefix_label)
+
+        return gi.import_rdf(content, filename, superclasses, get_local_name, prefix_label)
+    except gi.ImportError_ as exc:
+        raise HTTPException(400, str(exc))

@@ -21,6 +21,11 @@
   --brand-green:  #5cec94;
   --brand-yellow: #ffbf28;
 
+  /* Same hue, one shade down: the 1px edge that keeps a filled brand button
+     from bleeding into a light background. Not text-safe -- for borders only. */
+  --brand-cyan-edge:   #0fa3b3;
+  --brand-yellow-edge: #e0a413;
+
   --accent: #0f97a8;                          /* cyan, text-safe   */
   --accent-dim: #0b7d8b;
   --accent-glow: rgba(25, 190, 207, 0.14);

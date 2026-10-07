@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef, useEffect } from 'react'
+import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react'
 import ReactFlow, {
   addEdge,
   useNodesState,
@@ -19,12 +19,23 @@ import ToastContainer from './components/Toast.jsx'
 import PropertyPickerModal from './components/PropertyPickerModal.jsx'
 import EdgeEditModal from './components/EdgeEditModal.jsx'
 import DotOneModal from './components/DotOneModal.jsx'
-import RdfPipelineModal from './components/RdfPipelineModal.jsx'
+import ClassChangeModal from './components/ClassChangeModal.jsx'
+import ImportGraphModal from './components/ImportGraphModal.jsx'
 import PrefixManagerModal from './components/PrefixManagerModal.jsx'
+import LanguageManagerModal from './components/LanguageManagerModal.jsx'
 import { nodeTypes } from './components/OntologyNode.jsx'
 import { useToast } from './hooks/useToast.js'
 import { exportGraphML, exportRdfPipelineTSV, downloadText } from './utils/graphml.js'
-import { Download, Table, Layers, Save, FolderOpen, ShieldCheck, ChevronsDownUp, X, Group, Database, Tag, PlusCircle, ChevronDown, Image } from 'lucide-react'
+import { buildImportedGraph } from './utils/graphImport.js'
+import { tablesFromNodes, tableStubsFromProject, withLiveRows, tableMetaForProject } from './utils/projectTables.js'
+import { computeCollapse } from './utils/collapse.js'
+import {
+  DEFAULT_LANGUAGES, normalizeLanguages, allLanguages, isMultilingual,
+  patchLangValue, getLangValue, hasLabelIn, hasExplorerLabelIn,
+  remapNodeLanguages, langValues,
+} from './utils/languages.js'
+import { LanguageViewContext } from './hooks/useLanguageView.js'
+import { Download, Table, Layers, Save, FolderOpen, ShieldCheck, ChevronsDownUp, X, Group, FileDown, Tag, PlusCircle, ChevronDown, Image, FileInput, Minimize2, Maximize2, Languages } from 'lucide-react'
 import { resolveColor } from './utils/cidocColors.js'
 import { api } from './utils/api.js'
 
@@ -86,6 +97,27 @@ function makeDotOneEdge(id, midpointId, targetId, propLabel) {
 const PANEL_ONTOLOGY = 'ontology'
 const PANEL_TABLE    = 'table'
 
+// The edge editor is authoritative for every field it submits: a field the
+// user deliberately emptied arrives as null or '' and MUST overwrite the
+// stored value. Only a genuinely absent field (undefined) falls back to the
+// previous one. Using `??` here treats "cleared" as "unset" and silently
+// restores the old value, which made an assigned join key impossible to
+// remove again once it had been set.
+function pickField(next, prev) {
+  return next === undefined ? prev : next
+}
+
+// Colour heuristic for custom/free classes that are not part of a loaded
+// ontology (xsd:* literals, geo:*/GeoSPARQL geometry). The CIDOC superclass
+// lookup cannot resolve those, so match on the namespace instead.
+// Returns null when the class is an ordinary ontology class.
+function freeClassColor(label, uri) {
+  const s = `${label || ''} ${uri || ''}`
+  if (/(^|\s)xsd:/.test(s) || s.includes('XMLSchema')) return '#86bcc8'
+  if (/(^|\s)geo:/.test(s) || s.includes('geosparql')) return '#94cc7d'
+  return null
+}
+
 function BoundingBoxOverlay({ bounds, color, label, rfInstance }) {
   if (!bounds || !rfInstance) return null
   const vp = rfInstance.getViewport()
@@ -112,18 +144,39 @@ function GraphInner({
   prefixMap, setPrefixMap,
   widening, setWidening,
   wideningParent, setWideningParent,
+  languages, setLanguages,
+  activeLang, setActiveLang,
 }) {
   const rfInstance   = useReactFlow()
   const rfWrapper    = useRef(null)
   const loadInputRef = useRef(null)
+  // What the table panel currently holds. Every file written from the canvas
+  // (project, Graph Explorer JSON, RDF) takes its rows from here, so editing a
+  // table outside and loading it again is enough to update an export — see
+  // `withLiveRows`.
+  const [liveTables, setLiveTables] = useState([])
   const [pendingConnect, setPendingConnect] = useState(null)
   const [verifyResults, setVerifyResults] = useState(null)
   const [editingEdge, setEditingEdge] = useState(null)
   const [pendingDotOne, setPendingDotOne] = useState(null)
+  const [changingClass, setChangingClass] = useState(null)
+  const [importPreview, setImportPreview] = useState(null)
+  const importInputRef = useRef(null)
   const [namedGraphs, setNamedGraphs] = useState([])
   const [showGraphPanel, setShowGraphPanel] = useState(false)
-  const [showPipeline, setShowPipeline] = useState(false)
   const [showPrefixManager, setShowPrefixManager] = useState(false)
+  const [showLanguageManager, setShowLanguageManager] = useState(false)
+  // Read by the three label writers below instead of the `languages` prop.
+  // Those writers travel INSIDE the node data (see nodeCallbacks) and are
+  // captured once, when a node is created — so a handler that closed over the
+  // language set would keep using the one that was current back then. After a
+  // change of primary language that is not a stale label, it is a wrong slot:
+  // the writer would file English text in the map instead of the flat field.
+  // The ref keeps the bundle stable and always current at the same time.
+  const languagesRef = useRef(languages)
+  useEffect(() => { languagesRef.current = languages }, [languages])
+  const [showLangMenu, setShowLangMenu] = useState(false)
+  const langMenuRef = useRef(null)
   const [ontologyPrefixes, setOntologyPrefixes] = useState([])
   const [showFreeNode, setShowFreeNode] = useState(false)
   const [freeNodeLabel, setFreeNodeLabel] = useState('')
@@ -136,8 +189,18 @@ function GraphInner({
     setEdges(es => es.filter(e => e.source !== id && e.target !== id))
   }, [setNodes, setEdges])
 
-  const handleLabelChange = useCallback((id, label) => {
-    setNodes(ns => ns.map(n => n.id === id ? { ...n, data: { ...n.data, instanceLabel: label } } : n))
+  // Both label writers normalise to a trimmed string, so a field the user
+  // emptied (or left as whitespace) is stored as '' and every consumer —
+  // export, verification, Graph Explorer — sees it as genuinely unset.
+  //
+  // `lang` names the language the node row was showing. For the primary
+  // language `patchLangValue` writes the same flat field these handlers
+  // always wrote; only an additional language lands in the sibling map.
+  const handleLabelChange = useCallback((id, label, lang) => {
+    const value = (label || '').trim()
+    setNodes(ns => ns.map(n => n.id === id
+      ? { ...n, data: { ...n.data, ...patchLangValue(n.data, 'instanceLabel', lang, value, languagesRef.current) } }
+      : n))
   }, [setNodes])
 
   const handleColumnDrop = useCallback((id, col) => {
@@ -146,16 +209,21 @@ function GraphInner({
         ...n.data,
         mappedColumn: col ? col.name : null,
         tableId:      col ? col.tableId : null,
+        // The file name is what a later session matches a re-loaded table
+        // against, so it is kept on the node and saved with the project.
+        tableName:    col ? (col.tableName || null) : null,
         tableRows:    col ? col.allRows : null,
       }
     } : n))
     if (col) toast.success(`ID column "${col.name}" assigned (${col.allRows?.length} rows)`)
   }, [setNodes, toast])
 
-  // Called when a table is re-uploaded under the same filename (see TablePanel).
-  // Pushes the fresh rows into every node that was already mapped to that table,
-  // so a corrected source file doesn't require re-dragging every column by hand.
-  const handleTableRefresh = useCallback((tableId, allRows, headers) => {
+  // Called when a table is loaded again under the same filename, re-loaded
+  // through its tab, or loaded into one of the placeholders a project leaves
+  // behind (see TablePanel). Pushes the fresh rows into every node mapped to
+  // that table, so a corrected source file doesn't require re-dragging every
+  // column by hand — and every export from here on writes the new rows.
+  const handleTableRefresh = useCallback((tableId, allRows, headers, tableName) => {
     let updatedCount = 0
     const missingColumns = new Set()
     setNodes(ns => ns.map(n => {
@@ -163,9 +231,11 @@ function GraphInner({
       updatedCount++
       if (headers) {
         if (n.data.mappedColumn && !headers.includes(n.data.mappedColumn)) missingColumns.add(n.data.mappedColumn)
-        if (n.data.labelColumn && !headers.includes(n.data.labelColumn)) missingColumns.add(n.data.labelColumn)
+        for (const c of Object.values(langValues(n.data, 'labelColumn', languages))) {
+          if (!headers.includes(c)) missingColumns.add(c)
+        }
       }
-      return { ...n, data: { ...n.data, tableRows: allRows } }
+      return { ...n, data: { ...n.data, tableRows: allRows, tableName: tableName || n.data.tableName } }
     }))
     if (updatedCount > 0) {
       toast.success(`Table refreshed — ${updatedCount} node${updatedCount === 1 ? '' : 's'} updated with the new data`)
@@ -173,18 +243,90 @@ function GraphInner({
     if (missingColumns.size > 0) {
       toast.error(`Column(s) no longer found in the refreshed table: "${[...missingColumns].join('", "')}" — check node mapping`)
     }
-  }, [setNodes, toast])
+  }, [setNodes, toast, languages])
 
-  const handleLabelColumnDrop = useCallback((id, col) => {
+  // A placeholder's escape hatch: instead of a file, take the rows the project
+  // file carries inside its nodes. Explicit on purpose — loading a project no
+  // longer fills the panel by itself, because those rows are the state of the
+  // data when the project was saved, not necessarily the current one.
+  const handleUseStoredRows = useCallback((tableId) => {
+    const restored = tablesFromNodes(rfInstance.getNodes()).filter(t => t.tableId === tableId)
+    if (restored.length === 0) {
+      toast.error('No rows for this table are stored in the project')
+      return
+    }
+    window.dispatchEvent(new CustomEvent('tables:import', { detail: restored }))
+    toast.success(`${restored[0].allRows.length} stored rows loaded into "${restored[0].name}"`)
+  }, [rfInstance, toast])
+
+  // Two placeholders that turn out to be the same file: a table replaced by a
+  // newer version under a different name keeps its old id on every node that
+  // was mapped before the swap, so one project can refer to more tables than
+  // the user ever loaded. Pointing those nodes at a table that is already
+  // loaded merges the two without touching a single column mapping.
+  const handleAssignTable = useCallback((fromTableId, target) => {
+    if (!target?.tableId || target.tableId === fromTableId) return
+    let moved = 0
+    const missingColumns = new Set()
+    setNodes(ns => ns.map(n => {
+      if (n.data?.tableId !== fromTableId) return n
+      moved++
+      if (Array.isArray(target.headers)) {
+        if (n.data.mappedColumn && !target.headers.includes(n.data.mappedColumn)) missingColumns.add(n.data.mappedColumn)
+        for (const c of Object.values(langValues(n.data, 'labelColumn', languages))) {
+          if (!target.headers.includes(c)) missingColumns.add(c)
+        }
+      }
+      return {
+        ...n,
+        data: { ...n.data, tableId: target.tableId, tableName: target.name, tableRows: target.allRows },
+      }
+    }))
+    toast.success(`${moved} node${moved === 1 ? '' : 's'} now read from "${target.name}"`)
+    if (missingColumns.size > 0) {
+      toast.error(`Column(s) missing in "${target.name}": "${[...missingColumns].join('", "')}" — check node mapping`)
+    }
+  }, [setNodes, toast, languages])
+
+  // The single gate every file written from the canvas passes through: the
+  // rows currently in the table panel win over the snapshot a node still
+  // carries, so a table that was edited outside and loaded again is what ends
+  // up in the project file, the Graph Explorer JSON and the RDF. A table that
+  // is not loaded right now falls back to its snapshot and is reported.
+  const currentGraph = useCallback(() => {
+    const { nodes: freshNodes, missing, refreshed } = withLiveRows(rfInstance.getNodes(), liveTables)
+    if (missing.length > 0) {
+      const names = missing
+        .map(m => `"${m.name}" (${m.nodeCount} node${m.nodeCount === 1 ? '' : 's'})`)
+        .join(', ')
+      toast.info(`Not loaded in the table panel: ${names} — written from the rows stored in the project`)
+    }
+    return { nodes: freshNodes, edges: rfInstance.getEdges(), missing, refreshed }
+  }, [rfInstance, liveTables, toast])
+
+  // Same substitution for the panels that read the rows on screen instead of
+  // writing a file.
+  const liveNodes = useMemo(() => withLiveRows(nodes, liveTables).nodes, [nodes, liveTables])
+
+  // One label column PER LANGUAGE: dropping SE_Bez while the row shows "de"
+  // and SE_Bez_en while it shows "en" is how a table-bound node becomes
+  // multilingual. The table bookkeeping (id/name/rows) is shared — every
+  // language column comes from the same table as the node's own mapping.
+  const handleLabelColumnDrop = useCallback((id, col, lang) => {
     setNodes(ns => ns.map(n => n.id === id ? {
       ...n, data: {
         ...n.data,
-        labelColumn: col ? col.name : null,
+        ...patchLangValue(n.data, 'labelColumn', lang, col ? col.name : null, languagesRef.current),
         tableId:     (col && !n.data.tableId)   ? col.tableId : n.data.tableId,
+        tableName:   (col && !n.data.tableName) ? (col.tableName || null) : n.data.tableName,
         tableRows:   (col && !n.data.tableRows) ? col.allRows : n.data.tableRows,
       }
     } : n))
-    if (col) toast.success(`Label column "${col.name}" assigned`)
+    if (col) {
+      const langs = languagesRef.current
+      const suffix = isMultilingual(langs) ? ` as "${lang || langs.primary}"` : ''
+      toast.success(`Label column "${col.name}" assigned${suffix}`)
+    }
   }, [setNodes, toast])
 
   const handleFocusNode = useCallback((id, data) => {
@@ -196,9 +338,87 @@ function GraphInner({
     setNodes(ns => ns.map(n => n.id === id ? { ...n, data: { ...n.data, noPrefix } } : n))
   }, [setNodes])
 
-  const handleExplorerLabelChange = useCallback((id, explorerLabel) => {
-    setNodes(ns => ns.map(n => n.id === id ? { ...n, data: { ...n.data, explorerLabel } } : n))
+  // Collapsing is purely a display state: it lives in node.data so it survives
+  // save/load, and no exporter looks at it.
+  const handleToggleCollapse = useCallback((id) => {
+    setNodes(ns => ns.map(n => n.id === id ? { ...n, data: { ...n.data, collapsed: !n.data.collapsed } } : n))
   }, [setNodes])
+
+  const handleCollapseAll = useCallback((collapsed) => {
+    setNodes(ns => ns.map(n => n.type === 'ontologyNode'
+      ? { ...n, data: { ...n.data, collapsed } } : n))
+  }, [setNodes])
+
+  // Fold away the nodes that hang off this one (see utils/collapse.js for the
+  // ownership rule). Only the flag is set here — which nodes that actually
+  // hides is derived below, so the result stays correct when edges change
+  // afterwards.
+  const handleToggleChildren = useCallback((id) => {
+    setNodes(ns => ns.map(n => n.id === id
+      ? { ...n, data: { ...n.data, childrenCollapsed: !n.data.childrenCollapsed } } : n))
+  }, [setNodes])
+
+  // Re-derive the hidden set whenever the TOPOLOGY or a collapse flag changes.
+  // Keyed on a structural signature rather than on `nodes`/`edges` themselves:
+  // moving a node must not trigger it, and the flags this effect writes
+  // (hidden / counts) are not part of the key, so it cannot re-trigger itself.
+  const collapseKey = useMemo(() => (
+    nodes.map(n => (n.data?.childrenCollapsed ? `!${n.id}` : n.id)).join(',') +
+    '#' + edges.map(e => `${e.source}>${e.target}`).join(',')
+  ), [nodes, edges])
+
+  useEffect(() => {
+    const { hidden, hiddenEdges, countByRoot, collapsible } = computeCollapse(nodes, edges)
+    let nodesDirty = false
+    const nextNodes = nodes.map(n => {
+      const isHidden   = hidden.has(n.id)
+      const count      = countByRoot[n.id] || 0
+      const canCollapse = collapsible.has(n.id)
+      if (!!n.hidden === isHidden &&
+          (n.data?.hiddenChildCount || 0) === count &&
+          !!n.data?.hasCollapsibleChildren === canCollapse) return n
+      nodesDirty = true
+      return { ...n, hidden: isHidden, data: { ...n.data, hiddenChildCount: count, hasCollapsibleChildren: canCollapse } }
+    })
+    if (nodesDirty) setNodes(nextNodes)
+
+    let edgesDirty = false
+    const nextEdges = edges.map(e => {
+      const isHidden = hiddenEdges.has(e.id)
+      if (!!e.hidden === isHidden) return e
+      edgesDirty = true
+      return { ...e, hidden: isHidden }
+    })
+    if (edgesDirty) setEdges(nextEdges)
+  }, [collapseKey])   // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleExplorerLabelChange = useCallback((id, explorerLabel, lang) => {
+    const value = (explorerLabel || '').trim()
+    setNodes(ns => ns.map(n => n.id === id
+      ? { ...n, data: { ...n.data, ...patchLangValue(n.data, 'explorerLabel', lang, value, languagesRef.current) } }
+      : n))
+  }, [setNodes])
+
+  // ── Re-class a node ─────────────────────────────────────────────────────────
+  // Opens the picker. The change itself (see handleClassChangeConfirm) swaps
+  // ONLY the ontology class of the node — its id, position, edges, column
+  // mappings, instance/Explorer labels, literal flag and named-graph membership
+  // are left as they are, so the project file, the GraphML / Graph Explorer JSON
+  // and the RDF export all simply carry the new class where they carried the old.
+  const handleChangeClassRequest = useCallback((id) => {
+    const node = rfInstance.getNodes().find(n => n.id === id)
+    if (!node) return
+    const allEdges = rfInstance.getEdges()
+    // A dot-one split stores the real target on seg1 (edge.target is the
+    // midpoint helper), so count via originalTarget and skip seg2 to avoid
+    // counting the same connection twice.
+    const touches = (e) => e.source === id || e.target === id || e.data?.originalTarget === id
+    setChangingClass({
+      node,
+      connectionCount: allEdges.filter(e => touches(e) && !e.data?.isSplitSeg2).length,
+      outgoingEdges:   allEdges.filter(e => e.source === id && !e.data?.isDotOne && !e.data?.isSplitSeg2),
+    })
+  }, [rfInstance])
 
   const resolveNodeColor = useCallback(async (uri) => {
     try {
@@ -208,6 +428,22 @@ function GraphInner({
       return resolveColor(uri, [])
     }
   }, [])
+
+  // Every node carries the same callback bundle. Kept in one place so a node
+  // created on a new path (import, free node, project load) cannot silently
+  // miss one and end up with a dead button.
+  const nodeCallbacks = useMemo(() => ({
+    onDelete:              handleDeleteNode,
+    onLabelChange:         handleLabelChange,
+    onColumnDrop:          handleColumnDrop,
+    onLabelColumnDrop:     handleLabelColumnDrop,
+    onToggleNoPrefix:      handleToggleNoPrefix,
+    onExplorerLabelChange: handleExplorerLabelChange,
+    onFocus:               handleFocusNode,
+    onChangeClass:         handleChangeClassRequest,
+    onToggleCollapse:      handleToggleCollapse,
+    onToggleChildren:      handleToggleChildren,
+  }), [handleDeleteNode, handleLabelChange, handleColumnDrop, handleLabelColumnDrop, handleToggleNoPrefix, handleExplorerLabelChange, handleFocusNode, handleChangeClassRequest, handleToggleCollapse, handleToggleChildren])
 
   const makeNodeData = useCallback((item, nodeType, color) => ({
     label:         item.label,
@@ -220,14 +456,8 @@ function GraphInner({
     instanceLabel: '',
     noPrefix:      false,
     explorerLabel: '',
-    onDelete:              handleDeleteNode,
-    onLabelChange:         handleLabelChange,
-    onColumnDrop:          handleColumnDrop,
-    onLabelColumnDrop:     handleLabelColumnDrop,
-    onToggleNoPrefix:      handleToggleNoPrefix,
-    onExplorerLabelChange: handleExplorerLabelChange,
-    onFocus:               handleFocusNode,
-  }), [handleDeleteNode, handleLabelChange, handleColumnDrop, handleLabelColumnDrop, handleToggleNoPrefix, handleExplorerLabelChange, handleFocusNode])
+    ...nodeCallbacks,
+  }), [nodeCallbacks])
 
   const addNodeWithColor = useCallback(async (item, nodeType, pos) => {
     const id = `n${nodeCounter++}`
@@ -236,6 +466,33 @@ function GraphInner({
     setNodes(ns => ns.map(n => n.id === id ? { ...n, data: { ...n.data, nodeColor: color } } : n))
     return id
   }, [setNodes, makeNodeData, resolveNodeColor])
+
+  // Apply a re-class: replace the class fields (and the colour that derives
+  // from them) in place. Every other data field is spread through untouched.
+  const handleClassChangeConfirm = useCallback(async (newClass) => {
+    if (!changingClass) return
+    const id       = changingClass.node.id
+    const oldLabel = changingClass.node.data?.label || '—'
+
+    setNodes(ns => ns.map(n => n.id === id ? {
+      ...n,
+      data: {
+        ...n.data,
+        label:      newClass.label,
+        uri:        newClass.uri,
+        rdfs_label: newClass.rdfs_label || '',
+        isFreeNode: !!newClass.isFreeNode,
+      },
+    } : n))
+    setChangingClass(null)
+    toast.success(`Class changed: ${oldLabel} → ${newClass.label}`)
+
+    // Colour follows the new class (CIDOC convention, resolved via its
+    // superclasses); custom xsd:/geo: classes use the namespace heuristic.
+    const color = freeClassColor(newClass.label, newClass.uri)
+      || (await resolveNodeColor(newClass.uri)).color
+    setNodes(ns => ns.map(n => n.id === id ? { ...n, data: { ...n.data, nodeColor: color } } : n))
+  }, [changingClass, setNodes, resolveNodeColor, toast])
 
   const findNodeAtScreenPos = useCallback((clientX, clientY) => {
     if (!rfWrapper.current) return null
@@ -520,26 +777,45 @@ function GraphInner({
       if (e.id !== eid) return e
       return {
         ...e,
+        // The property label is the one field that keeps a fallback: an edge
+        // without a name would render as a blank connection.
         label: updatedData.label || e.label,
-        sourceHandle: updatedData.sourceHandle ?? e.sourceHandle,
-        targetHandle: updatedData.targetHandle ?? e.targetHandle,
+        sourceHandle: pickField(updatedData.sourceHandle, e.sourceHandle),
+        targetHandle: pickField(updatedData.targetHandle, e.targetHandle),
         data: {
           ...e.data,
           label: updatedData.label || e.data?.label,
-          propertyUri: updatedData.propertyUri ?? e.data?.propertyUri,
-          joinColumnSource: updatedData.joinColumnSource ?? e.data?.joinColumnSource,
-          joinColumnTarget: updatedData.joinColumnTarget ?? e.data?.joinColumnTarget,
-          dotOne: updatedData.dotOne ?? e.data?.dotOne,
-          dotOneTarget: updatedData.dotOneTarget ?? e.data?.dotOneTarget,
-          noInverse: updatedData.noInverse ?? e.data?.noInverse ?? false,
-          inversePropertyUri: updatedData.inversePropertyUri ?? e.data?.inversePropertyUri ?? '',
-          explorerLabel: updatedData.explorerLabel ?? e.data?.explorerLabel ?? '',
+          propertyUri:        pickField(updatedData.propertyUri,        e.data?.propertyUri),
+          joinColumnSource:   pickField(updatedData.joinColumnSource,   e.data?.joinColumnSource ?? null),
+          joinColumnTarget:   pickField(updatedData.joinColumnTarget,   e.data?.joinColumnTarget ?? null),
+          dotOne:             pickField(updatedData.dotOne,             e.data?.dotOne ?? null),
+          dotOneTarget:       pickField(updatedData.dotOneTarget,       e.data?.dotOneTarget ?? null),
+          noInverse:          pickField(updatedData.noInverse,          e.data?.noInverse ?? false),
+          inversePropertyUri: (pickField(updatedData.inversePropertyUri, e.data?.inversePropertyUri) || '').trim(),
+          explorerLabel:      (pickField(updatedData.explorerLabel,     e.data?.explorerLabel)      || '').trim(),
         },
       }
     }))
     toast.success('Edge updated')
     setEditingEdge(null)
   }, [editingEdge, setEdges, toast])
+
+  // The two TSVs the RDF and Graph Explorer exports are built from. Was step 1
+  // of the RDF pipeline; kept as a plain download for anyone feeding the fully
+  // resolved URIs into their own tooling.
+  const handleExportTSV = () => {
+    const nsMap = {}
+    Object.entries(prefixMap).forEach(([pfx, ns]) => { nsMap[pfx] = ns })
+    const { nodes: exportNodes, edges: exportEdges } = currentGraph()
+    const result = exportRdfPipelineTSV(exportNodes, exportEdges, tableData, nsMap, idPrefix, namedGraphs, languages)
+    if (result.uriRowCount === 0 && result.literalRowCount === 0) {
+      toast.error('No data to export — please load a table and assign columns')
+      return
+    }
+    downloadText('Triples_URI.tsv', result.uriTSV, 'text/tab-separated-values')
+    downloadText('Triples_URI_literal.tsv', result.literalTSV, 'text/tab-separated-values')
+    toast.success(`TSV exported: ${result.uriRowCount} URI rows, ${result.literalRowCount} literal rows`)
+  }
 
   const handleExportGraphML = () => {
     downloadText('ontology-graph.graphml', exportGraphML(rfInstance.getNodes(), rfInstance.getEdges()))
@@ -630,25 +906,37 @@ function GraphInner({
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [showExportMenu])
 
+  useEffect(() => {
+    if (!showLangMenu) return
+    const handleClickOutside = (e) => {
+      if (langMenuRef.current && !langMenuRef.current.contains(e.target)) setShowLangMenu(false)
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [showLangMenu])
+
   const [rdfExportFormat, setRdfExportFormat] = useState('trig')
 
   const handleExportRdf = async (fmt) => {
     const format = fmt || rdfExportFormat
     const nsMap = {}
     Object.entries(prefixMap).forEach(([pfx, ns]) => { nsMap[pfx] = ns })
-    const result = exportRdfPipelineTSV(rfInstance.getNodes(), rfInstance.getEdges(), tableData, nsMap, idPrefix, namedGraphs)
+    // Rows come from the table panel as it stands right now, so re-loading an
+    // edited table and exporting again is all it takes to update the RDF.
+    const { nodes: exportNodes, edges: exportEdges } = currentGraph()
+    const result = exportRdfPipelineTSV(exportNodes, exportEdges, tableData, nsMap, idPrefix, namedGraphs, languages)
     if (result.uriRowCount === 0 && result.literalRowCount === 0) {
       toast.error('No data to export — please load a table and assign columns')
       return
     }
     toast.info(`Generating RDF (${result.uriRowCount} URI + ${result.literalRowCount} literal rows)…`)
     try {
-      const res = await api.exportRdf(result.uriTSV, result.literalTSV, format)
+      const res = await api.exportRdf(result.uriTSV, result.literalTSV, format, languages)
       if (res.triple_count === 0) {
         // Show debug info to help diagnose
         const dbg = res.debug || {}
         const skipped = (res.skipped_uris || []).slice(0, 5).join(', ')
-        toast.error(`0 Triples! Backend hat ${dbg.uri_rows_parsed || 0} URI rows parsed. Skipped: ${skipped || 'none'}. Are all prefixes defined in the Prefix Manager?`)
+        toast.error(`No triples written — the backend parsed ${dbg.uri_rows_parsed || 0} URI rows. Skipped: ${skipped || 'none'}. Are all prefixes defined in the Prefix Manager?`)
         console.warn('RDF Export Debug:', res.debug, 'Skipped:', res.skipped_uris)
         return
       }
@@ -691,7 +979,9 @@ function GraphInner({
   const handleExploreInGraphExplorer = useCallback(async () => {
     const nsMap = {}
     Object.entries(prefixMap).forEach(([pfx, ns]) => { nsMap[pfx] = ns })
-    const result = exportRdfPipelineTSV(rfInstance.getNodes(), rfInstance.getEdges(), tableData, nsMap, idPrefix, namedGraphs)
+    // Same rule as the RDF export: the currently loaded tables are the data.
+    const { nodes: exportNodes, edges: exportEdges } = currentGraph()
+    const result = exportRdfPipelineTSV(exportNodes, exportEdges, tableData, nsMap, idPrefix, namedGraphs, languages)
     if (result.uriRowCount === 0 && result.literalRowCount === 0) {
       toast.error('No data to explore — please load a table and assign columns')
       return
@@ -704,7 +994,7 @@ function GraphInner({
         : 'RDF Graph'
       const graphJson = await api.exportGraphExplorerJson(
         result.uriTSV, result.literalTSV,
-        projectTitle, typeColors, typeLabels, edgeLabels
+        projectTitle, typeColors, typeLabels, edgeLabels, languages
       )
       if (!graphJson || !graphJson.nodes || Object.keys(graphJson.nodes).length === 0) {
         toast.error('Graph Explorer: no nodes generated. Are all prefixes defined?')
@@ -712,11 +1002,31 @@ function GraphInner({
       }
       // Download the JSON so it can be loaded into the Explorer
       downloadText('graph-explorer-data.json', JSON.stringify(graphJson, null, 2), 'application/json')
-      toast.success(`Graph JSON exported: ${graphJson.meta?.node_count} nodes · ${graphJson.meta?.edge_count} edges — now drop it into the RDF Graph Explorer (graph-explorer-app)`)
+      toast.success(`Graph JSON exported: ${graphJson.meta?.node_count} nodes · ${graphJson.meta?.edge_count} edges — now drop it into the GraphExplorer`)
     } catch (e) {
       toast.error('Graph Explorer export error: ' + e.message)
     }
-  }, [rfInstance, prefixMap, tableData, idPrefix, namedGraphs, collectSchemaHints, toast])
+  }, [rfInstance, currentGraph, prefixMap, tableData, idPrefix, namedGraphs, collectSchemaHints, toast, languages])
+
+  // ── Language Manager save handler ───────────────────────────────────────
+  //
+  // Changing the primary language is not a display change — the flat node
+  // fields ARE the primary language, so their contents have to move with it.
+  // `remapNodeLanguages` lifts every label into a {lang: value} map and
+  // re-splits it against the new primary; without that, switching de→en
+  // would leave German text in the field the exporter tags @en, which is
+  // exactly the bug this feature exists to remove.
+  const handleLanguagesSave = useCallback((next) => {
+    const to = normalizeLanguages(next)
+    setNodes(ns => ns.map(n => n.type === 'dotOneMidpoint'
+      ? n
+      : { ...n, data: remapNodeLanguages(n.data, languages, to) }))
+    setLanguages(to)
+    setActiveLang(to.primary)
+    setShowLanguageManager(false)
+    const extra = to.additional.length > 0 ? ` + ${to.additional.join(', ')}` : ''
+    toast.success(`Languages: ${to.primary} (primary)${extra}`)
+  }, [languages, setNodes, setLanguages, setActiveLang, toast])
 
   // ── Prefix Manager save handler ─────────────────────────────────────────
   const handlePrefixSave = useCallback((newMap, newIdPrefix) => {
@@ -749,13 +1059,7 @@ function GraphInner({
       noPrefix:      label.startsWith('xsd:') || label.startsWith('geo:') ||
                      (uri && (uri.includes('xsd:') || uri.includes('XMLSchema') || uri.includes('geo:'))),
       explorerLabel: '',
-      onDelete:              handleDeleteNode,
-      onLabelChange:         handleLabelChange,
-      onColumnDrop:          handleColumnDrop,
-      onLabelColumnDrop:     handleLabelColumnDrop,
-      onToggleNoPrefix:      handleToggleNoPrefix,
-      onExplorerLabelChange: handleExplorerLabelChange,
-      onFocus:               handleFocusNode,
+      ...nodeCallbacks,
     }
 
     // Place near viewport center
@@ -778,19 +1082,98 @@ function GraphInner({
     setFreeNodeLabel('')
     setFreeNodeUri('')
     setShowFreeNode(false)
-  }, [freeNodeLabel, freeNodeUri, rfInstance, setNodes, handleDeleteNode, handleLabelChange,
-      handleColumnDrop, handleLabelColumnDrop, handleToggleNoPrefix, handleExplorerLabelChange,
-      handleFocusNode, resolveNodeColor, toast])
+  }, [freeNodeLabel, freeNodeUri, rfInstance, setNodes, nodeCallbacks, resolveNodeColor, toast])
 
+  // ── Import an existing graph (RDF / Graph Explorer JSON) ────────────────────
+  // The backend lifts the instance graph onto the schema level (one group per
+  // rdf:type); buildImportedGraph turns those groups into ORDINARY mapped
+  // nodes. From here on nothing is special about them — re-classing,
+  // re-connecting and both exports run through the existing code paths.
+  const handleImportFile = async (e) => {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    toast.info(`Reading ${file.name}…`)
+    try {
+      const payload = await api.importGraph(file)
+      if (!payload?.classes?.length) {
+        toast.error('No classes found in this file')
+        return
+      }
+      setImportPreview({ payload, fileName: file.name })
+    } catch (err) {
+      toast.error('Import failed: ' + err.message)
+    }
+  }
+
+  const handleImportConfirm = useCallback(async () => {
+    if (!importPreview) return
+    const { payload } = importPreview
+    setImportPreview(null)
+
+    const built = buildImportedGraph(payload, () => `n${nodeCounter++}`)
+
+    setNodes(ns => [...ns, ...built.nodes.map(n => ({
+      ...n, data: { ...n.data, ...nodeCallbacks },
+    }))])
+    setEdges(es => [...es, ...built.edges.map(ed => ({
+      ...ed, style: EDGE_STYLE, markerEnd: EDGE_MARKER, ...EDGE_LABEL_STYLE,
+    }))])
+
+    // Hand the synthetic tables to the table panel so their columns can be
+    // dragged onto further nodes, exactly like an uploaded spreadsheet.
+    window.dispatchEvent(new CustomEvent('tables:import', { detail: built.tables }))
+
+    toast.success(
+      `Imported: ${built.summary.class_count} classes · ${built.summary.relation_count} connections · ` +
+      `${built.summary.instance_count} instances`
+    )
+    for (const w of (built.summary.warnings || [])) toast.info(w)
+
+    // Colour the class nodes by the CIDOC convention (one lookup per class).
+    const classUris = [...new Set(built.nodes.map(n => n.data?.uri).filter(u => u && String(u).startsWith('http')))]
+    const colors = {}
+    await Promise.all(classUris.map(async uri => {
+      try { colors[uri] = (await resolveNodeColor(uri)).color } catch { /* keep placeholder */ }
+    }))
+    // Literal nodes keep their namespace-based colour — the CIDOC lookup has
+    // nothing to say about xsd:*/geo:* and would flatten them to white.
+    setNodes(ns => ns.map(n => (n.data?.importedFrom && !n.data?.isFreeNode && colors[n.data?.uri])
+      ? { ...n, data: { ...n.data, nodeColor: colors[n.data.uri] } }
+      : n))
+
+    setTimeout(() => rfInstance.fitView({ duration: 400, padding: 0.15, minZoom: 0.02, maxZoom: 1.5 }), 80)
+  }, [importPreview, setNodes, setEdges, nodeCallbacks, resolveNodeColor, rfInstance, toast])
+
+  // v5 writes the rows of the currently loaded tables (not the ones the nodes
+  // were mapped with) and adds a `tables` section, which is what the next
+  // session builds its table placeholders from.
+  // v6 adds `languages`. The node fields themselves are unchanged for a
+  // single-language project — only additional languages add the *I18n maps —
+  // so a v6 file with one language is a v5 file plus one line.
   const handleSaveProject = () => {
-    const project = { version: 4, idPrefix, prefixMap, wideningParent, wideningChild: widening, namedGraphs, nodes: rfInstance.getNodes(), edges: rfInstance.getEdges() }
+    const { nodes: exportNodes, edges: exportEdges, refreshed } = currentGraph()
+    const project = {
+      version: 6,
+      idPrefix, prefixMap, wideningParent, wideningChild: widening, namedGraphs,
+      languages,
+      tables: tableMetaForProject(exportNodes, liveTables),
+      nodes: exportNodes,
+      edges: exportEdges,
+    }
     downloadText('ontocartographer-project.json', JSON.stringify(project, null, 2), 'application/json')
-    toast.success('Project saved')
+    const note = refreshed.length > 0
+      ? ` · ${refreshed.length} table${refreshed.length === 1 ? '' : 's'} written with the currently loaded rows`
+      : ''
+    toast.success(`Project saved${note}`)
   }
 
   // ── Graph Verification ──────────────────────────────────────────────────────
   const handleVerify = useCallback(async () => {
-    const allNodes = rfInstance.getNodes()
+    // Checks the data as it would be written, not the snapshot the nodes were
+    // mapped with — a row count or a sample value from a stale table would
+    // report on something no export produces any more.
+    const allNodes = liveNodes
     const allEdges = rfInstance.getEdges()
     const issues = []
 
@@ -818,6 +1201,37 @@ function GraphInner({
       }
     }
 
+    // 2b. Missing translations. This is where the bulk "who still needs an
+    //     English label?" question is answered — deliberately here and not on
+    //     the canvas, which is what lets the per-node chips stay at 26px.
+    //     Reported once per language with a node count, not once per node:
+    //     a fresh second language would otherwise bury every other finding.
+    if (isMultilingual(languages)) {
+      for (const lang of languages.additional) {
+        const missingLabel = []
+        const missingExplorer = []
+        for (const n of allNodes) {
+          if (n.type === 'dotOneMidpoint') continue
+          const d = n.data || {}
+          // Only nodes that HAVE the field in the primary language can be
+          // missing a translation of it — a node with no label at all is
+          // already covered by check 1.
+          if (hasLabelIn(d, languages.primary, languages) && !hasLabelIn(d, lang, languages)) {
+            missingLabel.push(d.label || n.id)
+          }
+          if (hasExplorerLabelIn(d, languages.primary, languages) && !hasExplorerLabelIn(d, lang, languages)) {
+            missingExplorer.push(d.label || n.id)
+          }
+        }
+        if (missingLabel.length > 0) {
+          issues.push({ type: 'info', node: null, msg: `Language "${lang}": ${missingLabel.length} node(s) without a label — ${missingLabel.slice(0, 6).join(', ')}${missingLabel.length > 6 ? ', …' : ''}` })
+        }
+        if (missingExplorer.length > 0) {
+          issues.push({ type: 'info', node: null, msg: `Language "${lang}": ${missingExplorer.length} node(s) without an Explorer name — ${missingExplorer.slice(0, 6).join(', ')}${missingExplorer.length > 6 ? ', …' : ''}` })
+        }
+      }
+    }
+
     // 3. Possible ID/Label swap: if mappedColumn values look like labels (contain spaces)
     for (const n of allNodes) {
       if (n.type === 'dotOneMidpoint') continue
@@ -842,7 +1256,7 @@ function GraphInner({
     for (const n of allNodes) {
       if (n.type === 'dotOneMidpoint') continue
       if (!connected.has(n.id)) {
-        issues.push({ type: 'info', node: n.id, msg: `Node "${n.data?.label}" (${n.id}): Nicht verbunden (none Edges)` })
+        issues.push({ type: 'info', node: n.id, msg: `Node "${n.data?.label}" (${n.id}): not connected to any other node` })
       }
     }
 
@@ -892,7 +1306,7 @@ function GraphInner({
       const infos = issues.filter(i => i.type === 'info').length
       toast.info(`Verification: ${errors} errors, ${warns} warnings, ${infos} hints`)
     }
-  }, [rfInstance, toast])
+  }, [liveNodes, rfInstance, toast, languages])
 
   const handleLoadProject = () => { loadInputRef.current?.click() }
 
@@ -901,6 +1315,7 @@ function GraphInner({
     if (!file) return
     const reader = new FileReader()
     reader.onload = (ev) => {
+      let legacyLangNote = null
       try {
         const project = JSON.parse(ev.target.result)
         if (!project.nodes || !project.edges) throw new Error('Invalid project format')
@@ -908,16 +1323,7 @@ function GraphInner({
         // Re-attach all callbacks – they cannot be serialised to JSON
         const restoredNodes = project.nodes.map(n => ({
           ...n,
-          data: {
-            ...n.data,
-            onDelete:              handleDeleteNode,
-            onLabelChange:         handleLabelChange,
-            onColumnDrop:          handleColumnDrop,
-            onLabelColumnDrop:     handleLabelColumnDrop,
-            onToggleNoPrefix:      handleToggleNoPrefix,
-            onExplorerLabelChange: handleExplorerLabelChange,
-            onFocus:               handleFocusNode,
-          },
+          data: { ...n.data, ...nodeCallbacks },
         }))
 
         setNodes(restoredNodes)
@@ -938,11 +1344,41 @@ function GraphInner({
         if (project.wideningChild !== undefined) setWidening(project.wideningChild)
         else if (project.widening !== undefined) setWidening(project.widening)
         if (project.namedGraphs) setNamedGraphs(project.namedGraphs)
+        // Pre-v6 files carry no languages. Everything they hold was written
+        // out as @en by a hard-coded tag in the RDF exporter — regardless of
+        // what language the text actually was. Those projects therefore load
+        // with the current default primary language and say so, rather than
+        // silently keeping a tag that was never a decision.
+        if (project.languages) {
+          const langs = normalizeLanguages(project.languages)
+          setLanguages(langs)
+          setActiveLang(langs.primary)
+        } else {
+          setActiveLang(languages.primary)
+          legacyLangNote = languages.primary
+        }
         // Fix nodeCounter to avoid ID collisions
         const maxId = Math.max(0, ...project.nodes.map(n => parseInt(n.id.replace('n',''))||0))
         nodeCounter = maxId + 1
         setVerifyResults(null)
-        toast.success(`Project loaded: ${project.nodes.length} Nodes, ${project.edges.length} Edges`)
+
+        // The tables are NOT rebuilt from the file. The rows a project carries
+        // are the state of the data when it was saved, and a project is
+        // usually re-opened in order to feed it updated tables — so the panel
+        // gets one empty placeholder per table the canvas refers to instead.
+        // Loading a file into a placeholder reuses its table id, which keeps
+        // every column mapping valid; the placeholder also offers the rows
+        // stored in the file, for when they *are* what is wanted.
+        const stubs = tableStubsFromProject(project)
+        window.dispatchEvent(new CustomEvent('tables:placeholders', { detail: stubs }))
+
+        const tableNote = stubs.length > 0
+          ? ` · ${stubs.length} table${stubs.length === 1 ? '' : 's'} expected — load them in the Tables panel`
+          : ''
+        toast.success(`Project loaded: ${project.nodes.length} Nodes, ${project.edges.length} Edges${tableNote}`)
+        if (legacyLangNote) {
+          toast.info(`Project predates language support — its labels were exported as "@en" regardless of their actual language. They are now written as "@${legacyLangNote}"; change it under the language button if that is wrong.`)
+        }
       } catch (err) {
         toast.error('Error loading: ' + err.message)
       }
@@ -951,13 +1387,21 @@ function GraphInner({
     e.target.value = ''
   }
 
+  // Memoised so a re-render doesn't hand every node a fresh context object.
+  const languageView = useMemo(() => ({ languages, activeLang }), [languages, activeLang])
+
   const nodeCount = rfInstance.getNodes().length
   const edgeCount = rfInstance.getEdges().length
+  // Derived from the rendered nodes so the button label follows individually
+  // collapsed nodes too, not just its own last click.
+  const ontologyNodes = nodes.filter(n => n.type === 'ontologyNode')
+  const allCollapsed  = ontologyNodes.length > 0 && ontologyNodes.every(n => n.data?.collapsed)
 
   return (
+    <LanguageViewContext.Provider value={languageView}>
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
       <div style={{
-        display: 'flex', alignItems: 'center', gap: 6,
+        display: 'flex', alignItems: 'center', gap: 10,
         padding: '0 16px', height: 42, flexShrink: 0,
         background: 'var(--bg-card)', borderBottom: '1px solid var(--border)',
       }}>
@@ -969,23 +1413,67 @@ function GraphInner({
           </span>
         </div>
         <div style={{ flex: 1 }} />
-        <div style={{ display: 'flex', gap: 2, background: 'var(--bg)', borderRadius: 6, padding: 2 }}>
-          {[
-            { id: PANEL_ONTOLOGY, icon: <Layers size={11} />, label: 'Ontologies' },
-            { id: PANEL_TABLE,    icon: <Table  size={11} />, label: 'Tables'  },
-          ].map(tab => (
-            <button key={tab.id} onClick={() => setActivePanel(tab.id)} style={{
-              display: 'flex', alignItems: 'center', gap: 5,
-              padding: '4px 12px', borderRadius: 4, fontSize: 11,
-              background: activePanel === tab.id ? 'var(--bg-card)' : 'transparent',
-              color:      activePanel === tab.id ? 'var(--text)'    : 'var(--text-muted)',
-              border:     activePanel === tab.id ? '1px solid var(--border)' : '1px solid transparent',
+        {/* Language switch. One control, two jobs — which is why it is worth a
+            slot in an already-full toolbar: it sets the display language for
+            every node at once (a per-row chip would mean one click per node),
+            and it is where the project's languages are defined, so neither
+            the Prefix Manager nor a separate settings dialog had to grow. */}
+        <div style={{ position: 'relative' }} ref={langMenuRef}>
+          <button className="btn-secondary"
+            style={{
+              display: 'flex', alignItems: 'center', gap: 4, fontSize: 11,
+              background: isMultilingual(languages) ? 'rgba(219,39,119,0.1)' : undefined,
+              borderColor: isMultilingual(languages) ? 'rgba(219,39,119,0.35)' : undefined,
+              color: isMultilingual(languages) ? '#db2777' : undefined,
+            }}
+            onClick={() => setShowLangMenu(v => !v)}
+            title="Label languages — sets the display language for all nodes and defines the project's languages"
+          >
+            <Languages size={11} />
+            <span style={{ fontFamily: 'var(--mono)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{activeLang}</span>
+            <ChevronDown size={9} style={{ transform: showLangMenu ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }} />
+          </button>
+          {showLangMenu && (
+            <div style={{
+              position: 'absolute', top: '100%', left: 0, marginTop: 4, zIndex: 100,
+              background: 'var(--bg-panel)', border: '1px solid var(--border)',
+              borderRadius: 'var(--radius-lg)', boxShadow: '0 4px 16px rgba(0,0,0,0.1)',
+              minWidth: 190, overflow: 'hidden',
             }}>
-              {tab.icon} {tab.label}
-            </button>
-          ))}
+              {allLanguages(languages).map(tag => (
+                <button key={tag}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '7px 12px',
+                    background: 'transparent', fontSize: 11, textAlign: 'left',
+                    color: tag === activeLang ? '#db2777' : 'var(--text)',
+                    fontWeight: tag === activeLang ? 600 : 400,
+                  }}
+                  onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
+                  onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                  onClick={() => { setActiveLang(tag); setShowLangMenu(false) }}
+                >
+                  <span style={{ width: 10, fontSize: 10 }}>{tag === activeLang ? '✓' : ''}</span>
+                  <span style={{ fontFamily: 'var(--mono)', textTransform: 'uppercase' }}>{tag}</span>
+                  {tag === languages.primary && (
+                    <span style={{ fontSize: 9, color: 'var(--text-muted)', marginLeft: 'auto' }}>primary</span>
+                  )}
+                </button>
+              ))}
+              <button
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '7px 12px',
+                  background: 'transparent', color: 'var(--text-muted)', fontSize: 11, textAlign: 'left',
+                  borderTop: '1px solid var(--border)',
+                }}
+                onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
+                onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                onClick={() => { setShowLanguageManager(true); setShowLangMenu(false) }}
+              >
+                <span style={{ width: 10 }} /> Manage languages…
+              </button>
+            </div>
+          )}
         </div>
-        <div style={{ width: 1, height: 20, background: 'var(--border)' }} />
         <button className="btn-secondary"
           style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11 }}
           onClick={() => {
@@ -1019,6 +1507,16 @@ function GraphInner({
         >
           <PlusCircle size={11} /> Node
         </button>
+        <button className="btn-secondary"
+          style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11 }}
+          onClick={() => handleCollapseAll(!allCollapsed)}
+          title={allCollapsed
+            ? 'Expand all nodes'
+            : 'Collapse all nodes to their class name — nothing is lost, only hidden'}
+        >
+          {allCollapsed ? <Maximize2 size={11} /> : <Minimize2 size={11} />}
+          {allCollapsed ? 'Expand' : 'Collapse'}
+        </button>
         <div style={{ width: 1, height: 20, background: 'var(--border)' }} />
         <button className="btn-secondary" style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11 }} onClick={handleSaveProject}>
           <Save size={11} /> Save
@@ -1027,6 +1525,14 @@ function GraphInner({
           <FolderOpen size={11} /> Load
         </button>
         <input ref={loadInputRef} type="file" accept=".json" style={{ display: 'none' }} onChange={handleLoadFile} />
+        <button className="btn-secondary" style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11 }}
+          onClick={() => importInputRef.current?.click()}
+          title="Import an existing graph (RDF or Graph Explorer JSON) — one node per class, instances land in a table behind it">
+          <FileInput size={11} /> Import
+        </button>
+        <input ref={importInputRef} type="file" style={{ display: 'none' }}
+          accept=".ttl,.rdf,.owl,.xml,.nt,.nq,.trig,.n3,.jsonld,.json"
+          onChange={handleImportFile} />
         <div style={{ width: 1, height: 20, background: 'var(--border)' }} />
         <button
           onClick={() => setWideningParent(w => !w)}
@@ -1097,9 +1603,19 @@ function GraphInner({
         </button>
         <div style={{ width: 1, height: 20, background: 'var(--border)' }} />
         <div style={{ position: 'relative' }} ref={exportMenuRef}>
-          <button className="btn-secondary" style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11 }}
-            onClick={() => setShowExportMenu(m => !m)}>
-            <Download size={11} /> Export <ChevronDown size={9} />
+          <button style={{
+              display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, fontWeight: 500,
+              background: 'var(--brand-cyan)', color: 'var(--text)',
+              padding: '6px 14px', borderRadius: 'var(--radius)',
+              border: '1px solid var(--brand-cyan-edge)',
+            }}
+            onClick={() => setShowExportMenu(m => !m)}
+            title="Export the canvas as GraphML, PNG, SVG or TSV">
+            <Download size={11} /> Export
+            <ChevronDown size={9} style={{
+              transform: showExportMenu ? 'rotate(180deg)' : 'none',
+              transition: 'transform 0.15s',
+            }} />
           </button>
           {showExportMenu && (
             <div style={{
@@ -1132,8 +1648,22 @@ function GraphInner({
                 onClick={() => { handleExportImage('png'); setShowExportMenu(false) }}>
                 <Image size={12} color="var(--text-dim)" />
                 <div>
-                  <div style={{ fontWeight: 500 }}>PNG (Bild)</div>
+                  <div style={{ fontWeight: 500 }}>PNG (image)</div>
                   <div style={{ fontSize: 9, color: 'var(--text-muted)' }}>Publication-ready, 2× resolution</div>
+                </div>
+              </button>
+              <button style={{
+                display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '8px 14px',
+                background: 'transparent', color: 'var(--text)', fontSize: 11, textAlign: 'left',
+                borderBottom: '1px solid var(--border)',
+              }}
+                onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
+                onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                onClick={() => { handleExportImage('svg'); setShowExportMenu(false) }}>
+                <Image size={12} color="var(--text-dim)" />
+                <div>
+                  <div style={{ fontWeight: 500 }}>SVG (vector)</div>
+                  <div style={{ fontSize: 9, color: 'var(--text-muted)' }}>Scalable, editable</div>
                 </div>
               </button>
               <button style={{
@@ -1142,11 +1672,11 @@ function GraphInner({
               }}
                 onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
                 onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-                onClick={() => { handleExportImage('svg'); setShowExportMenu(false) }}>
-                <Image size={12} color="var(--text-dim)" />
+                onClick={() => { handleExportTSV(); setShowExportMenu(false) }}>
+                <FileDown size={12} color="var(--text-dim)" />
                 <div>
-                  <div style={{ fontWeight: 500 }}>SVG (Vektor)</div>
-                  <div style={{ fontSize: 9, color: 'var(--text-muted)' }}>Scalable, editable</div>
+                  <div style={{ fontWeight: 500 }}>TSV (URI + Literal)</div>
+                  <div style={{ fontSize: 9, color: 'var(--text-muted)' }}>Fully resolved URIs, 2 files</div>
                 </div>
               </button>
             </div>
@@ -1165,7 +1695,7 @@ function GraphInner({
           </select>
           <button style={{
               display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, borderRadius: '0 4px 4px 0',
-              background: '#db2777', color: '#fff', padding: '6px 14px', fontWeight: 500,
+              background: 'var(--brand-pink)', color: '#fff', padding: '6px 14px', fontWeight: 500,
             }}
             onClick={() => handleExportRdf()}
             title="Direct RDF export of all instance data incl. Named Graphs">
@@ -1175,25 +1705,14 @@ function GraphInner({
         <button
           style={{
             display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, fontWeight: 500,
-            background: '#19becf', color: '#06363d',
+            background: 'var(--brand-yellow)', color: 'var(--text)',
             padding: '6px 14px', borderRadius: 'var(--radius)',
-            border: '1px solid #0fa3b3',
+            border: '1px solid var(--brand-yellow-edge)',
           }}
           onClick={handleExploreInGraphExplorer}
           title="Export graph JSON for Graph Explorer (graph-explorer.html)"
         >
           &#9906; Explore
-        </button>
-        <button
-          style={{
-            display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, fontWeight: 500,
-            background: showPipeline ? '#e0a413' : '#ffbf28', color: '#1e2d33',
-            padding: '6px 14px', borderRadius: 'var(--radius)',
-          }}
-          onClick={() => setShowPipeline(true)}
-          title="RDF Pipeline: Export → Ontotext Refine → GraphDB"
-        >
-          <Database size={11} /> RDF Pipeline
         </button>
       </div>
 
@@ -1378,11 +1897,41 @@ function GraphInner({
 
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
         <div style={{ width: leftWidth, flexShrink: 0, borderRight: '1px solid var(--border)', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-          <div style={{ display: activePanel === PANEL_ONTOLOGY ? 'flex' : 'none', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
-            <OntologyPanel widening={widening} wideningParent={wideningParent} />
+          {/* Panel switcher — sits directly above the panel it switches, which
+              keeps the top bar free for the graph-wide actions. */}
+          <div style={{
+            display: 'flex', gap: 2, padding: 5, flexShrink: 0,
+            background: 'var(--bg)', borderBottom: '1px solid var(--border)',
+          }}>
+            {[
+              { id: PANEL_ONTOLOGY, icon: <Layers size={11} />, label: 'Ontologies' },
+              { id: PANEL_TABLE,    icon: <Table  size={11} />, label: 'Tables'  },
+            ].map(tab => (
+              <button key={tab.id} onClick={() => setActivePanel(tab.id)} style={{
+                flex: 1,
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
+                padding: '5px 12px', borderRadius: 4, fontSize: 11,
+                background: activePanel === tab.id ? 'var(--bg-card)' : 'transparent',
+                color:      activePanel === tab.id ? 'var(--text)'    : 'var(--text-muted)',
+                border:     activePanel === tab.id ? '1px solid var(--border)' : '1px solid transparent',
+              }}>
+                {tab.icon} {tab.label}
+              </button>
+            ))}
           </div>
-          <div style={{ display: activePanel === PANEL_TABLE ? 'flex' : 'none', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
-            <TablePanel onAllRowsUpdate={() => {}} onTableRefresh={handleTableRefresh} />
+          {/* flex:1 + minHeight:0 rather than height:100% — the panels now
+              share the column with the switcher above them. */}
+          <div style={{ display: activePanel === PANEL_ONTOLOGY ? 'flex' : 'none', flexDirection: 'column', flex: 1, minHeight: 0, overflow: 'hidden' }}>
+            <OntologyPanel widening={widening} wideningParent={wideningParent} toast={toast} />
+          </div>
+          <div style={{ display: activePanel === PANEL_TABLE ? 'flex' : 'none', flexDirection: 'column', flex: 1, minHeight: 0, overflow: 'hidden' }}>
+            <TablePanel
+              onAllRowsUpdate={() => {}}
+              onTableRefresh={handleTableRefresh}
+              onTablesChange={setLiveTables}
+              onUseStoredRows={handleUseStoredRows}
+              onAssignTable={handleAssignTable}
+            />
           </div>
         </div>
         <div className="resize-handle" onMouseDown={onMouseDownResize} />
@@ -1400,6 +1949,13 @@ function GraphInner({
             }}
             elementsSelectable={true}
             fitView deleteKeyCode="Delete"
+            // ReactFlow's default floor of 0.5 is far too high here: an
+            // imported graph easily spans several thousand pixels, and fitView
+            // silently clamps to the floor — leaving the user on a fragment of
+            // a layout that is in fact perfectly ordered.
+            minZoom={0.02}
+            maxZoom={2.5}
+            fitViewOptions={{ padding: 0.15, minZoom: 0.02, maxZoom: 1.5 }}
             defaultEdgeOptions={{ focusable: true, style: EDGE_STYLE }}
           >
             <Background variant={BackgroundVariant.Dots} color="var(--border)" gap={22} size={1} />
@@ -1464,6 +2020,27 @@ function GraphInner({
         />
       )}
 
+      {importPreview && (
+        <ImportGraphModal
+          payload={importPreview.payload}
+          fileName={importPreview.fileName}
+          onConfirm={handleImportConfirm}
+          onCancel={() => setImportPreview(null)}
+        />
+      )}
+
+      {changingClass && (
+        <ClassChangeModal
+          node={changingClass.node}
+          outgoingEdges={changingClass.outgoingEdges}
+          connectionCount={changingClass.connectionCount}
+          widening={widening}
+          wideningParent={wideningParent}
+          onConfirm={handleClassChangeConfirm}
+          onCancel={() => setChangingClass(null)}
+        />
+      )}
+
       {pendingDotOne && (
         <DotOneModal
           edge={pendingDotOne.edge}
@@ -1475,18 +2052,6 @@ function GraphInner({
         />
       )}
 
-      {showPipeline && (
-        <RdfPipelineModal
-          nodes={rfInstance.getNodes()}
-          edges={rfInstance.getEdges()}
-          tableData={tableData}
-          prefixMap={prefixMap}
-          idPrefix={idPrefix}
-          namedGraphs={namedGraphs}
-          onClose={() => setShowPipeline(false)}
-          toast={toast}
-        />
-      )}
 
       {showPrefixManager && (
         <PrefixManagerModal
@@ -1496,10 +2061,20 @@ function GraphInner({
           onClose={() => setShowPrefixManager(false)}
           ontologyPrefixes={ontologyPrefixes}
           tableData={tableData}
-          nodes={rfInstance.getNodes()}
+          nodes={liveNodes}
+        />
+      )}
+
+      {showLanguageManager && (
+        <LanguageManagerModal
+          languages={languages}
+          nodes={liveNodes}
+          onSave={handleLanguagesSave}
+          onClose={() => setShowLanguageManager(false)}
         />
       )}
     </div>
+    </LanguageViewContext.Provider>
   )
 }
 
@@ -1509,6 +2084,11 @@ export default function App() {
   const [leftWidth,   setLeftWidth]   = useState(280)
   const [tableData,   setTableData]   = useState([])
   const [idPrefix,  setIdPrefix]  = useState('your_prefix')
+  // Project languages, and the canvas-wide display language (view state only,
+  // never saved). Defaults to a single language, which renders exactly the
+  // pre-3.1 UI — the language chips only appear once a second one is added.
+  const [languages, setLanguages]   = useState(DEFAULT_LANGUAGES)
+  const [activeLang, setActiveLang] = useState(DEFAULT_LANGUAGES.primary)
   const [wideningParent, setWideningParent] = useState(true)
   const [wideningChild, setWideningChild] = useState(false)
   const [prefixMap, setPrefixMap] = useState({
@@ -1555,6 +2135,8 @@ export default function App() {
         prefixMap={prefixMap} setPrefixMap={setPrefixMap}
         widening={wideningChild} setWidening={setWideningChild}
         wideningParent={wideningParent} setWideningParent={setWideningParent}
+        languages={languages} setLanguages={setLanguages}
+        activeLang={activeLang} setActiveLang={setActiveLang}
       />
       <ToastContainer toasts={toasts} />
     </ReactFlowProvider>

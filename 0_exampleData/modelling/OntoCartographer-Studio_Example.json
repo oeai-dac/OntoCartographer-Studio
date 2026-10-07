@@ -1,5 +1,5 @@
 {
-  "version": 4,
+  "version": 6,
   "idPrefix": "example",
   "prefixMap": {
     "crm": "http://www.cidoc-crm.org/cidoc-crm/",
@@ -12,7 +12,8 @@
     "xsd": "http://www.w3.org/2001/XMLSchema#",
     "example": "http://example.org/example-indy-style/",
     "vocabs": "http://example.org/vocabs/",
-    "wikidata": "https://www.wikidata.org/wiki/"
+    "wikidata": "https://www.wikidata.org/wiki/",
+    "schema": "https://schema.org/"
   },
   "wideningParent": true,
   "wideningChild": true,
@@ -54,6 +55,67 @@
       "color": "#32A88B"
     }
   ],
+  "languages": {
+    "primary": "en",
+    "additional": [
+      "de"
+    ]
+  },
+  "tables": [
+    {
+      "tableId": "tbl_14",
+      "name": "Sites.xlsx",
+      "headers": [
+        "Site",
+        "SiteID",
+        "Short_form",
+        "Site_Child",
+        "Site_Child_ID",
+        "ShortForm_Child",
+        "Activity",
+        "Activity_id",
+        "Start",
+        "End"
+      ],
+      "rowCount": 1
+    },
+    {
+      "tableId": "tbl_15",
+      "name": "StratigraphicalUnits.xlsx",
+      "headers": [
+        "Excavation_ID",
+        "Sondage",
+        "Sondage_ID",
+        "StratigraphicalUnit",
+        "ID_SU",
+        "Art_ID",
+        "Art",
+        "Strat_rel",
+        "Strat_rel_ID"
+      ],
+      "rowCount": 2
+    },
+    {
+      "tableId": "tbl_13",
+      "name": "Findings.xlsx",
+      "headers": [
+        "ID_StratigraphicalUnit",
+        "ID_Embedding",
+        "Inventorynumber",
+        "Artefact_Short",
+        "Material_ID",
+        "Material",
+        "Art_ID",
+        "Art",
+        "Art_DE",
+        "FindNo_ID",
+        "Find_No",
+        "Geometry_ID",
+        "Geometry"
+      ],
+      "rowCount": 4
+    }
+  ],
   "nodes": [
     {
       "id": "n1",
@@ -72,7 +134,7 @@
         "labelColumn": "Site_Child",
         "instanceLabel": "",
         "noPrefix": false,
-        "tableId": "tbl_5",
+        "tableId": "tbl_14",
         "tableRows": [
           {
             "Site": "Wadi al-Sirr",
@@ -86,16 +148,21 @@
             "Start": 1981,
             "End": 1989
           }
-        ]
+        ],
+        "hiddenChildCount": 0,
+        "hasCollapsibleChildren": true,
+        "tableName": "Sites.xlsx",
+        "explorerLabel": ""
       },
       "width": 170,
-      "height": 142,
+      "height": 143,
       "selected": false,
       "positionAbsolute": {
         "x": 147.64638546803428,
         "y": -154.76023399521998
       },
-      "dragging": false
+      "dragging": false,
+      "hidden": false
     },
     {
       "id": "n2",
@@ -114,7 +181,7 @@
         "labelColumn": "Activity",
         "instanceLabel": "",
         "noPrefix": false,
-        "tableId": "tbl_5",
+        "tableId": "tbl_14",
         "tableRows": [
           {
             "Site": "Wadi al-Sirr",
@@ -128,16 +195,21 @@
             "Start": 1981,
             "End": 1989
           }
-        ]
+        ],
+        "hiddenChildCount": 0,
+        "hasCollapsibleChildren": true,
+        "tableName": "Sites.xlsx",
+        "explorerLabel": ""
       },
-      "width": 228,
-      "height": 142,
+      "width": 240,
+      "height": 143,
       "selected": false,
       "positionAbsolute": {
         "x": 117.67863837697644,
         "y": 62.3315634928518
       },
-      "dragging": false
+      "dragging": false,
+      "hidden": false
     },
     {
       "id": "n3",
@@ -156,7 +228,7 @@
         "labelColumn": "ShortForm_Child",
         "instanceLabel": "",
         "noPrefix": false,
-        "tableId": "tbl_5",
+        "tableId": "tbl_14",
         "tableRows": [
           {
             "Site": "Wadi al-Sirr",
@@ -170,10 +242,12 @@
             "Start": 1981,
             "End": 1989
           }
-        ]
+        ],
+        "tableName": "Sites.xlsx",
+        "explorerLabel": ""
       },
-      "width": 170,
-      "height": 142,
+      "width": 195,
+      "height": 143,
       "selected": false,
       "positionAbsolute": {
         "x": 566.9506034475205,
@@ -185,8 +259,8 @@
       "id": "n7",
       "type": "ontologyNode",
       "position": {
-        "x": -271.6366766059721,
-        "y": -65.25066103864063
+        "x": -318.4353981297004,
+        "y": -66.1015468845266
       },
       "data": {
         "label": "S20_Rigid_Physical_Feature",
@@ -198,7 +272,7 @@
         "labelColumn": "Sondage",
         "instanceLabel": "",
         "noPrefix": false,
-        "tableId": "tbl_6",
+        "tableId": "tbl_15",
         "tableRows": [
           {
             "Excavation_ID": "secret_place_excavation",
@@ -222,23 +296,28 @@
             "Strat_rel": "below",
             "Strat_rel_ID": "SP-SO1-SU1001"
           }
-        ]
+        ],
+        "hiddenChildCount": 0,
+        "hasCollapsibleChildren": true,
+        "tableName": "StratigraphicalUnits.xlsx",
+        "explorerLabel": ""
       },
-      "width": 215,
-      "height": 142,
+      "width": 240,
+      "height": 143,
       "selected": false,
       "positionAbsolute": {
-        "x": -271.6366766059721,
-        "y": -65.25066103864063
+        "x": -318.4353981297004,
+        "y": -66.1015468845266
       },
-      "dragging": false
+      "dragging": false,
+      "hidden": false
     },
     {
       "id": "n8",
       "type": "ontologyNode",
       "position": {
-        "x": -277.3508487785291,
-        "y": 233.54086654894377
+        "x": -303.04694361511156,
+        "y": 315.5708404658554
       },
       "data": {
         "label": "A8_Stratigraphic_Unit",
@@ -250,7 +329,7 @@
         "labelColumn": "StratigraphicalUnit",
         "instanceLabel": "",
         "noPrefix": false,
-        "tableId": "tbl_6",
+        "tableId": "tbl_15",
         "tableRows": [
           {
             "Excavation_ID": "secret_place_excavation",
@@ -274,23 +353,31 @@
             "Strat_rel": "below",
             "Strat_rel_ID": "SP-SO1-SU1001"
           }
-        ]
+        ],
+        "hiddenChildCount": 0,
+        "hasCollapsibleChildren": true,
+        "tableName": "StratigraphicalUnits.xlsx",
+        "explorerLabel": "Stratigraphical Unit",
+        "explorerLabelI18n": {
+          "de": "Stratigraphische Einheit"
+        }
       },
-      "width": 181,
-      "height": 142,
+      "width": 236,
+      "height": 143,
       "selected": false,
       "positionAbsolute": {
-        "x": -277.3508487785291,
-        "y": 233.54086654894377
+        "x": -303.04694361511156,
+        "y": 315.5708404658554
       },
-      "dragging": false
+      "dragging": false,
+      "hidden": false
     },
     {
       "id": "n18",
       "type": "ontologyNode",
       "position": {
-        "x": 58.629839927799026,
-        "y": 347.3873385387359
+        "x": 103.6162371385168,
+        "y": 339.7492195345557
       },
       "data": {
         "label": "E55_Type",
@@ -302,7 +389,7 @@
         "labelColumn": "Art",
         "instanceLabel": "",
         "noPrefix": false,
-        "tableId": "tbl_6",
+        "tableId": "tbl_15",
         "tableRows": [
           {
             "Excavation_ID": "secret_place_excavation",
@@ -326,14 +413,16 @@
             "Strat_rel": "below",
             "Strat_rel_ID": "SP-SO1-SU1001"
           }
-        ]
+        ],
+        "tableName": "StratigraphicalUnits.xlsx",
+        "explorerLabel": ""
       },
       "width": 170,
-      "height": 142,
+      "height": 143,
       "selected": false,
       "positionAbsolute": {
-        "x": 58.629839927799026,
-        "y": 347.3873385387359
+        "x": 103.6162371385168,
+        "y": 339.7492195345557
       },
       "dragging": false
     },
@@ -341,8 +430,8 @@
       "id": "n19",
       "type": "ontologyNode",
       "position": {
-        "x": -260.878516031887,
-        "y": 762.3939335865216
+        "x": -254.87851603188696,
+        "y": 855.727266919855
       },
       "data": {
         "label": "E55_Type",
@@ -354,72 +443,81 @@
         "labelColumn": "Art",
         "instanceLabel": "",
         "noPrefix": false,
-        "tableId": "tbl_10",
+        "tableId": "tbl_13",
         "tableRows": [
           {
-            "ID_Schicht": "SP-SO1-SU1001",
+            "ID_StratigraphicalUnit": "SP-SO1-SU1001",
             "ID_Embedding": "SP-SO1-SU1001-01_emb",
-            "Fundnummer": "SP-SO1-SU1001-01",
+            "Inventorynumber": "SP-SO1-SU1001-01",
             "Artefact_Short": "Artefact-1001",
             "Material_ID": "vocabs:leather",
             "Material": "Leather",
             "Art_ID": "wikidata:whip",
             "Art": "Whip, fragmented",
+            "Art_DE": "Peitsche, fragmentiert",
             "FindNo_ID": "SP-SO1-SU1001-01_02042",
             "Find_No": "FP_02042",
             "Geometry_ID": "SP-SO1-SU1001-01_02042_geometry",
             "Geometry": "\"Point Z (16.38034560249579 48.210088370741175 205.8)\""
           },
           {
-            "ID_Schicht": "SP-SO1-SU1001",
+            "ID_StratigraphicalUnit": "SP-SO1-SU1001",
             "ID_Embedding": "SP-SO1-SU1001-02_emb",
-            "Fundnummer": "SP-SO1-SU1001-02",
+            "Inventorynumber": "SP-SO1-SU1001-02",
             "Artefact_Short": "Artefact-1002",
             "Material_ID": "vocabs:ceramic",
             "Material": "Ceramic",
             "Art_ID": "wikidata:ostraka",
             "Art": "Ostraka, with ancient map",
+            "Art_DE": "Ostrake, mit antiker Karte",
             "FindNo_ID": "SP-SO1-SU1001-02_02424",
             "Find_No": "FP_02424",
             "Geometry_ID": "SP-SO1-SU1001-02_02424_geometry",
             "Geometry": "\"Point Z (16.38033369522551 48.2100782007972 205.6)\""
           },
           {
-            "ID_Schicht": "SP-SO1-SU1002",
+            "ID_StratigraphicalUnit": "SP-SO1-SU1002",
             "ID_Embedding": "SP-SO1-SU1002-01_emb",
-            "Fundnummer": "SP-SO1-SU1002-01",
+            "Inventorynumber": "SP-SO1-SU1002-01",
             "Artefact_Short": "Artefact-2001",
             "Material_ID": "vocabs:gold",
             "Material": "Gold",
             "Art_ID": "wikidata:amulett",
             "Art": "Amulett, with geometric décor",
+            "Art_DE": "Amulett, mit geometrischem Dekor",
             "FindNo_ID": "SP-SO1-SU1002-01_04284",
             "Find_No": "FP_04284",
             "Geometry_ID": "SP-SO1-SU1002-01_04284_geometry",
             "Geometry": "\"Point Z (16.381092246500952 48.209658340899914 204.2)\""
           },
           {
-            "ID_Schicht": "SP-SO1-SU1002",
+            "ID_StratigraphicalUnit": "SP-SO1-SU1002",
             "ID_Embedding": "SP-SO1-SU1002-02_emb",
-            "Fundnummer": "SP-SO1-SU1002-02",
+            "Inventorynumber": "SP-SO1-SU1002-02",
             "Artefact_Short": "Artefact-2002",
             "Material_ID": "vocabs:terracotta",
             "Material": "Terracotta",
             "Art_ID": "wikidata:statuette",
             "Art": "Statuett, anthropomorphic",
+            "Art_DE": "Statuette, antropomorph",
             "FindNo_ID": "SP-SO1-SU1002-02_04802",
             "Find_No": "FP_04802",
             "Geometry_ID": "SP-SO1-SU1002-02_04802_geometry",
             "Geometry": "\"Point Z (16.381096023999557 48.20966930748111 204.4)\""
           }
-        ]
+        ],
+        "tableName": "Findings.xlsx",
+        "explorerLabel": "",
+        "labelColumnI18n": {
+          "de": "Art_DE"
+        }
       },
       "width": 170,
-      "height": 142,
+      "height": 143,
       "selected": false,
       "positionAbsolute": {
-        "x": -260.878516031887,
-        "y": 762.3939335865216
+        "x": -254.87851603188696,
+        "y": 855.727266919855
       },
       "dragging": false
     },
@@ -427,8 +525,8 @@
       "id": "n20",
       "type": "ontologyNode",
       "position": {
-        "x": 55.6926149805505,
-        "y": 557.6719450604685
+        "x": 113.6926149805505,
+        "y": 622.3386117271352
       },
       "data": {
         "label": "E57_Material",
@@ -440,72 +538,78 @@
         "labelColumn": "Material",
         "instanceLabel": "",
         "noPrefix": false,
-        "tableId": "tbl_4",
+        "tableId": "tbl_13",
         "tableRows": [
           {
-            "ID_Schicht": "SP-SO1-SU1001",
+            "ID_StratigraphicalUnit": "SP-SO1-SU1001",
             "ID_Embedding": "SP-SO1-SU1001-01_emb",
-            "Fundnummer": "SP-SO1-SU1001-01",
+            "Inventorynumber": "SP-SO1-SU1001-01",
             "Artefact_Short": "Artefact-1001",
             "Material_ID": "vocabs:leather",
             "Material": "Leather",
             "Art_ID": "wikidata:whip",
             "Art": "Whip, fragmented",
+            "Art_DE": "Peitsche, fragmentiert",
             "FindNo_ID": "SP-SO1-SU1001-01_02042",
             "Find_No": "FP_02042",
             "Geometry_ID": "SP-SO1-SU1001-01_02042_geometry",
             "Geometry": "\"Point Z (16.38034560249579 48.210088370741175 205.8)\""
           },
           {
-            "ID_Schicht": "SP-SO1-SU1002",
+            "ID_StratigraphicalUnit": "SP-SO1-SU1001",
             "ID_Embedding": "SP-SO1-SU1001-02_emb",
-            "Fundnummer": "SP-SO1-SU1001-02",
+            "Inventorynumber": "SP-SO1-SU1001-02",
             "Artefact_Short": "Artefact-1002",
             "Material_ID": "vocabs:ceramic",
             "Material": "Ceramic",
             "Art_ID": "wikidata:ostraka",
             "Art": "Ostraka, with ancient map",
+            "Art_DE": "Ostrake, mit antiker Karte",
             "FindNo_ID": "SP-SO1-SU1001-02_02424",
             "Find_No": "FP_02424",
             "Geometry_ID": "SP-SO1-SU1001-02_02424_geometry",
             "Geometry": "\"Point Z (16.38033369522551 48.2100782007972 205.6)\""
           },
           {
-            "ID_Schicht": "SP-SO1-SU1001",
+            "ID_StratigraphicalUnit": "SP-SO1-SU1002",
             "ID_Embedding": "SP-SO1-SU1002-01_emb",
-            "Fundnummer": "SP-SO1-SU1002-01",
+            "Inventorynumber": "SP-SO1-SU1002-01",
             "Artefact_Short": "Artefact-2001",
             "Material_ID": "vocabs:gold",
             "Material": "Gold",
             "Art_ID": "wikidata:amulett",
             "Art": "Amulett, with geometric décor",
+            "Art_DE": "Amulett, mit geometrischem Dekor",
             "FindNo_ID": "SP-SO1-SU1002-01_04284",
             "Find_No": "FP_04284",
             "Geometry_ID": "SP-SO1-SU1002-01_04284_geometry",
             "Geometry": "\"Point Z (16.381092246500952 48.209658340899914 204.2)\""
           },
           {
-            "ID_Schicht": "SP-SO1-SU1002",
+            "ID_StratigraphicalUnit": "SP-SO1-SU1002",
             "ID_Embedding": "SP-SO1-SU1002-02_emb",
-            "Fundnummer": "SP-SO1-SU1002-02",
+            "Inventorynumber": "SP-SO1-SU1002-02",
             "Artefact_Short": "Artefact-2002",
             "Material_ID": "vocabs:terracotta",
             "Material": "Terracotta",
             "Art_ID": "wikidata:statuette",
             "Art": "Statuett, anthropomorphic",
+            "Art_DE": "Statuette, antropomorph",
             "FindNo_ID": "SP-SO1-SU1002-02_04802",
             "Find_No": "FP_04802",
             "Geometry_ID": "SP-SO1-SU1002-02_04802_geometry",
             "Geometry": "\"Point Z (16.381096023999557 48.20966930748111 204.4)\""
           }
-        ]
+        ],
+        "tableName": "Findings.xlsx",
+        "explorerLabel": ""
       },
       "width": 170,
-      "height": 142,
+      "height": 143,
       "selected": false,
       "positionAbsolute": {
-        "x": 55.6926149805505,
-        "y": 557.6719450604685
+        "x": 113.6926149805505,
+        "y": 622.3386117271352
       },
       "dragging": false
     },
@@ -523,10 +627,10 @@
         "rdfs_label": "Stratigraphic Unit",
         "nodeColor": "#c78e66",
         "mappedColumn": "Strat_rel_ID",
-        "labelColumn": null,
+        "labelColumn": "",
         "instanceLabel": "",
         "noPrefix": false,
-        "tableId": "tbl_12",
+        "tableId": "tbl_15",
         "tableRows": [
           {
             "Excavation_ID": "secret_place_excavation",
@@ -550,10 +654,12 @@
             "Strat_rel": "below",
             "Strat_rel_ID": "SP-SO1-SU1001"
           }
-        ]
+        ],
+        "tableName": "StratigraphicalUnits.xlsx",
+        "explorerLabel": ""
       },
-      "width": 181,
-      "height": 142,
+      "width": 217,
+      "height": 143,
       "positionAbsolute": {
         "x": -902.0355759450466,
         "y": 204.39677722299797
@@ -578,7 +684,7 @@
         "instanceLabel": "",
         "noPrefix": false,
         "explorerLabel": "",
-        "tableId": "tbl_2",
+        "tableId": "tbl_14",
         "tableRows": [
           {
             "Site": "Wadi al-Sirr",
@@ -592,16 +698,20 @@
             "Start": 1981,
             "End": 1989
           }
-        ]
+        ],
+        "hiddenChildCount": 0,
+        "hasCollapsibleChildren": true,
+        "tableName": "Sites.xlsx"
       },
-      "width": 170,
-      "height": 142,
+      "width": 176,
+      "height": 143,
       "selected": false,
       "positionAbsolute": {
         "x": 144.6770704375412,
         "y": -391.83803812201853
       },
-      "dragging": false
+      "dragging": false,
+      "hidden": false
     },
     {
       "id": "n25",
@@ -621,7 +731,7 @@
         "instanceLabel": "",
         "noPrefix": true,
         "explorerLabel": "",
-        "tableId": "tbl_2",
+        "tableId": "tbl_14",
         "tableRows": [
           {
             "Site": "Wadi al-Sirr",
@@ -635,10 +745,11 @@
             "Start": 1981,
             "End": 1989
           }
-        ]
+        ],
+        "tableName": "Sites.xlsx"
       },
       "width": 170,
-      "height": 142,
+      "height": 143,
       "selected": false,
       "positionAbsolute": {
         "x": 569.8421739885435,
@@ -662,9 +773,9 @@
         "mappedColumn": "End",
         "labelColumn": "End",
         "instanceLabel": "",
-        "noPrefix": false,
+        "noPrefix": true,
         "explorerLabel": "",
-        "tableId": "tbl_2",
+        "tableId": "tbl_14",
         "tableRows": [
           {
             "Site": "Wadi al-Sirr",
@@ -678,11 +789,12 @@
             "Start": 1981,
             "End": 1989
           }
-        ]
+        ],
+        "tableName": "Sites.xlsx"
       },
       "width": 170,
-      "height": 142,
-      "selected": false,
+      "height": 143,
+      "selected": true,
       "positionAbsolute": {
         "x": 572.4829510292329,
         "y": 116.07141270392015
@@ -693,8 +805,8 @@
       "id": "n27",
       "type": "ontologyNode",
       "position": {
-        "x": -271.79599819881753,
-        "y": 523.2769532069617
+        "x": -290.9792455064919,
+        "y": 624.7049017463333
       },
       "data": {
         "label": "crm:E19_Physical_Object",
@@ -702,79 +814,87 @@
         "nodeType": "subject",
         "rdfs_label": "Materieller Gegenstand",
         "nodeColor": "#c78e66",
-        "mappedColumn": "Fundnummer",
+        "mappedColumn": "Inventorynumber",
         "labelColumn": "Artefact_Short",
         "instanceLabel": "",
         "noPrefix": false,
         "explorerLabel": "",
-        "tableId": "tbl_1",
+        "tableId": "tbl_13",
         "tableRows": [
           {
-            "ID_Schicht": "SP-SO1-SU1001",
+            "ID_StratigraphicalUnit": "SP-SO1-SU1001",
             "ID_Embedding": "SP-SO1-SU1001-01_emb",
-            "Fundnummer": "SP-SO1-SU1001-01",
+            "Inventorynumber": "SP-SO1-SU1001-01",
             "Artefact_Short": "Artefact-1001",
             "Material_ID": "vocabs:leather",
             "Material": "Leather",
             "Art_ID": "wikidata:whip",
             "Art": "Whip, fragmented",
+            "Art_DE": "Peitsche, fragmentiert",
             "FindNo_ID": "SP-SO1-SU1001-01_02042",
             "Find_No": "FP_02042",
             "Geometry_ID": "SP-SO1-SU1001-01_02042_geometry",
             "Geometry": "\"Point Z (16.38034560249579 48.210088370741175 205.8)\""
           },
           {
-            "ID_Schicht": "SP-SO1-SU1001",
+            "ID_StratigraphicalUnit": "SP-SO1-SU1001",
             "ID_Embedding": "SP-SO1-SU1001-02_emb",
-            "Fundnummer": "SP-SO1-SU1001-02",
+            "Inventorynumber": "SP-SO1-SU1001-02",
             "Artefact_Short": "Artefact-1002",
             "Material_ID": "vocabs:ceramic",
             "Material": "Ceramic",
             "Art_ID": "wikidata:ostraka",
             "Art": "Ostraka, with ancient map",
+            "Art_DE": "Ostrake, mit antiker Karte",
             "FindNo_ID": "SP-SO1-SU1001-02_02424",
             "Find_No": "FP_02424",
             "Geometry_ID": "SP-SO1-SU1001-02_02424_geometry",
             "Geometry": "\"Point Z (16.38033369522551 48.2100782007972 205.6)\""
           },
           {
-            "ID_Schicht": "SP-SO1-SU1002",
+            "ID_StratigraphicalUnit": "SP-SO1-SU1002",
             "ID_Embedding": "SP-SO1-SU1002-01_emb",
-            "Fundnummer": "SP-SO1-SU1002-01",
+            "Inventorynumber": "SP-SO1-SU1002-01",
             "Artefact_Short": "Artefact-2001",
             "Material_ID": "vocabs:gold",
             "Material": "Gold",
             "Art_ID": "wikidata:amulett",
             "Art": "Amulett, with geometric décor",
+            "Art_DE": "Amulett, mit geometrischem Dekor",
             "FindNo_ID": "SP-SO1-SU1002-01_04284",
             "Find_No": "FP_04284",
             "Geometry_ID": "SP-SO1-SU1002-01_04284_geometry",
             "Geometry": "\"Point Z (16.381092246500952 48.209658340899914 204.2)\""
           },
           {
-            "ID_Schicht": "SP-SO1-SU1002",
+            "ID_StratigraphicalUnit": "SP-SO1-SU1002",
             "ID_Embedding": "SP-SO1-SU1002-02_emb",
-            "Fundnummer": "SP-SO1-SU1002-02",
+            "Inventorynumber": "SP-SO1-SU1002-02",
             "Artefact_Short": "Artefact-2002",
             "Material_ID": "vocabs:terracotta",
             "Material": "Terracotta",
             "Art_ID": "wikidata:statuette",
             "Art": "Statuett, anthropomorphic",
+            "Art_DE": "Statuette, antropomorph",
             "FindNo_ID": "SP-SO1-SU1002-02_04802",
             "Find_No": "FP_04802",
             "Geometry_ID": "SP-SO1-SU1002-02_04802_geometry",
             "Geometry": "\"Point Z (16.381096023999557 48.20966930748111 204.4)\""
           }
-        ]
+        ],
+        "hiddenChildCount": 0,
+        "hasCollapsibleChildren": true,
+        "tableName": "Findings.xlsx"
       },
-      "width": 194,
-      "height": 142,
+      "width": 240,
+      "height": 143,
       "selected": false,
       "positionAbsolute": {
-        "x": -271.79599819881753,
-        "y": 523.2769532069617
+        "x": -290.9792455064919,
+        "y": 624.7049017463333
       },
-      "dragging": false
+      "dragging": false,
+      "hidden": false
     },
     {
       "id": "mid_1785240512076",
@@ -784,7 +904,9 @@
         "y": 282.9688218859709
       },
       "data": {
-        "parentEdgeLabel": "crmarchaeo:AP11_has_physical_relation_to"
+        "parentEdgeLabel": "crmarchaeo:AP11_has_physical_relation_to",
+        "hiddenChildCount": 0,
+        "hasCollapsibleChildren": true
       },
       "draggable": true,
       "width": 14,
@@ -792,14 +914,16 @@
       "positionAbsolute": {
         "x": -506.19321236178786,
         "y": 282.9688218859709
-      }
+      },
+      "hidden": false,
+      "selected": false
     },
     {
       "id": "n28",
       "type": "ontologyNode",
       "position": {
-        "x": -583.5760562188777,
-        "y": 414.0033666727163
+        "x": -712.0884258900189,
+        "y": 415.66588115746583
       },
       "data": {
         "label": "crm:E55_Type",
@@ -812,7 +936,7 @@
         "instanceLabel": "",
         "noPrefix": false,
         "explorerLabel": "",
-        "tableId": "tbl_3",
+        "tableId": "tbl_15",
         "tableRows": [
           {
             "Excavation_ID": "secret_place_excavation",
@@ -836,59 +960,20 @@
             "Strat_rel": "below",
             "Strat_rel_ID": "SP-SO1-SU1001"
           }
-        ]
+        ],
+        "tableName": "StratigraphicalUnits.xlsx"
       },
       "width": 170,
-      "height": 142,
-      "selected": true,
+      "height": 143,
+      "selected": false,
       "positionAbsolute": {
-        "x": -583.5760562188777,
-        "y": 414.0033666727163
+        "x": -712.0884258900189,
+        "y": 415.66588115746583
       },
       "dragging": false
     }
   ],
   "edges": [
-    {
-      "focusable": true,
-      "style": {
-        "stroke": "#db2777",
-        "strokeWidth": 1.5
-      },
-      "id": "e_n24_n1_1785239831951",
-      "source": "n24",
-      "target": "n1",
-      "sourceHandle": "b-s",
-      "targetHandle": "t-t",
-      "label": "crm:P46_is_composed_of",
-      "data": {
-        "label": "crm:P46_is_composed_of",
-        "propertyUri": "http://www.cidoc-crm.org/cidoc-crm/P46_is_composed_of",
-        "joinColumnSource": null,
-        "joinColumnTarget": null
-      },
-      "markerEnd": {
-        "type": "arrowclosed",
-        "color": "#db2777",
-        "width": 14,
-        "height": 14
-      },
-      "labelStyle": {
-        "fill": "#db2777",
-        "fontFamily": "'IBM Plex Mono',monospace",
-        "fontSize": 10
-      },
-      "labelBgStyle": {
-        "fill": "#ffffff",
-        "fillOpacity": 0.95
-      },
-      "labelBgPadding": [
-        4,
-        6
-      ],
-      "labelBgBorderRadius": 3,
-      "selected": false
-    },
     {
       "focusable": true,
       "style": {
@@ -974,84 +1059,6 @@
         "stroke": "#db2777",
         "strokeWidth": 1.5
       },
-      "id": "e_n2_n25_1785239944817",
-      "source": "n2",
-      "target": "n25",
-      "sourceHandle": "r-s",
-      "targetHandle": "l-t",
-      "label": "crmarchaeo:AP24_starts",
-      "data": {
-        "label": "crmarchaeo:AP24_starts",
-        "propertyUri": "http://www.cidoc-crm.org/extensions/crmarchaeo/AP24_starts",
-        "joinColumnSource": null,
-        "joinColumnTarget": null
-      },
-      "markerEnd": {
-        "type": "arrowclosed",
-        "color": "#db2777",
-        "width": 14,
-        "height": 14
-      },
-      "labelStyle": {
-        "fill": "#db2777",
-        "fontFamily": "'IBM Plex Mono',monospace",
-        "fontSize": 10
-      },
-      "labelBgStyle": {
-        "fill": "#ffffff",
-        "fillOpacity": 0.95
-      },
-      "labelBgPadding": [
-        4,
-        6
-      ],
-      "labelBgBorderRadius": 3
-    },
-    {
-      "focusable": true,
-      "style": {
-        "stroke": "#db2777",
-        "strokeWidth": 1.5
-      },
-      "id": "e_n2_n26_1785239976422",
-      "source": "n2",
-      "target": "n26",
-      "sourceHandle": "r-s",
-      "targetHandle": "l-t",
-      "label": "crmarchaeo:AP23_finishes",
-      "data": {
-        "label": "crmarchaeo:AP23_finishes",
-        "propertyUri": "http://www.cidoc-crm.org/extensions/crmarchaeo/AP23_finishes",
-        "joinColumnSource": null,
-        "joinColumnTarget": null
-      },
-      "markerEnd": {
-        "type": "arrowclosed",
-        "color": "#db2777",
-        "width": 14,
-        "height": 14
-      },
-      "labelStyle": {
-        "fill": "#db2777",
-        "fontFamily": "'IBM Plex Mono',monospace",
-        "fontSize": 10
-      },
-      "labelBgStyle": {
-        "fill": "#ffffff",
-        "fillOpacity": 0.95
-      },
-      "labelBgPadding": [
-        4,
-        6
-      ],
-      "labelBgBorderRadius": 3
-    },
-    {
-      "focusable": true,
-      "style": {
-        "stroke": "#db2777",
-        "strokeWidth": 1.5
-      },
       "id": "e_n1_n7_1785240002238",
       "source": "n1",
       "target": "n7",
@@ -1061,49 +1068,6 @@
       "data": {
         "label": "crm:P46_is_composed_of",
         "propertyUri": "http://www.cidoc-crm.org/cidoc-crm/P46_is_composed_of",
-        "joinColumnSource": "Activity_id",
-        "joinColumnTarget": "Excavation_ID",
-        "noInverse": false,
-        "inversePropertyUri": "",
-        "explorerLabel": ""
-      },
-      "markerEnd": {
-        "type": "arrowclosed",
-        "color": "#db2777",
-        "width": 14,
-        "height": 14
-      },
-      "labelStyle": {
-        "fill": "#db2777",
-        "fontFamily": "'IBM Plex Mono',monospace",
-        "fontSize": 10
-      },
-      "labelBgStyle": {
-        "fill": "#ffffff",
-        "fillOpacity": 0.95
-      },
-      "labelBgPadding": [
-        4,
-        6
-      ],
-      "labelBgBorderRadius": 3,
-      "selected": false
-    },
-    {
-      "focusable": true,
-      "style": {
-        "stroke": "#db2777",
-        "strokeWidth": 1.5
-      },
-      "id": "e_n2_n7_1785240105301",
-      "source": "n2",
-      "target": "n7",
-      "sourceHandle": "l-s",
-      "targetHandle": "r-t",
-      "label": "crmarchaeo:AP3_investigated",
-      "data": {
-        "label": "crmarchaeo:AP3_investigated",
-        "propertyUri": "http://www.cidoc-crm.org/extensions/crmarchaeo/AP3_investigated",
         "joinColumnSource": "Activity_id",
         "joinColumnTarget": "Excavation_ID",
         "noInverse": false,
@@ -1187,7 +1151,12 @@
         "label": "crm:P2_has_type",
         "propertyUri": "http://www.cidoc-crm.org/cidoc-crm/P2_has_type",
         "joinColumnSource": null,
-        "joinColumnTarget": null
+        "joinColumnTarget": null,
+        "dotOne": null,
+        "dotOneTarget": null,
+        "noInverse": false,
+        "inversePropertyUri": "is the interpretation of",
+        "explorerLabel": "has interpretation"
       },
       "markerEnd": {
         "type": "arrowclosed",
@@ -1208,7 +1177,8 @@
         4,
         6
       ],
-      "labelBgBorderRadius": 3
+      "labelBgBorderRadius": 3,
+      "selected": false
     },
     {
       "focusable": true,
@@ -1229,7 +1199,9 @@
         "joinColumnTarget": "ID_Schicht",
         "noInverse": false,
         "inversePropertyUri": "",
-        "explorerLabel": ""
+        "explorerLabel": "",
+        "dotOne": null,
+        "dotOneTarget": null
       },
       "markerEnd": {
         "type": "arrowclosed",
@@ -1290,7 +1262,8 @@
         4,
         6
       ],
-      "labelBgBorderRadius": 3
+      "labelBgBorderRadius": 3,
+      "selected": false
     },
     {
       "focusable": true,
@@ -1329,7 +1302,8 @@
         4,
         6
       ],
-      "labelBgBorderRadius": 3
+      "labelBgBorderRadius": 3,
+      "selected": false
     },
     {
       "focusable": true,
@@ -1435,6 +1409,168 @@
         5
       ],
       "labelBgBorderRadius": 3
+    },
+    {
+      "focusable": true,
+      "style": {
+        "stroke": "#db2777",
+        "strokeWidth": 1.5
+      },
+      "id": "e_n2_n25_1791291791660",
+      "source": "n2",
+      "target": "n25",
+      "sourceHandle": "r-s",
+      "targetHandle": "l-t",
+      "label": "schema:startDate",
+      "data": {
+        "label": "schema:startDate",
+        "propertyUri": "schema:startDate",
+        "joinColumnSource": null,
+        "joinColumnTarget": null
+      },
+      "markerEnd": {
+        "type": "arrowclosed",
+        "color": "#db2777",
+        "width": 14,
+        "height": 14
+      },
+      "labelStyle": {
+        "fill": "#db2777",
+        "fontFamily": "'IBM Plex Mono',monospace",
+        "fontSize": 10
+      },
+      "labelBgStyle": {
+        "fill": "#ffffff",
+        "fillOpacity": 0.95
+      },
+      "labelBgPadding": [
+        4,
+        6
+      ],
+      "labelBgBorderRadius": 3
+    },
+    {
+      "focusable": true,
+      "style": {
+        "stroke": "#db2777",
+        "strokeWidth": 1.5
+      },
+      "id": "e_n2_n26_1791291801333",
+      "source": "n2",
+      "target": "n26",
+      "sourceHandle": "r-s",
+      "targetHandle": "l-t",
+      "label": "schema:endDate",
+      "data": {
+        "label": "schema:endDate",
+        "propertyUri": "schema:endDate",
+        "joinColumnSource": null,
+        "joinColumnTarget": null
+      },
+      "markerEnd": {
+        "type": "arrowclosed",
+        "color": "#db2777",
+        "width": 14,
+        "height": 14
+      },
+      "labelStyle": {
+        "fill": "#db2777",
+        "fontFamily": "'IBM Plex Mono',monospace",
+        "fontSize": 10
+      },
+      "labelBgStyle": {
+        "fill": "#ffffff",
+        "fillOpacity": 0.95
+      },
+      "labelBgPadding": [
+        4,
+        6
+      ],
+      "labelBgBorderRadius": 3
+    },
+    {
+      "focusable": true,
+      "style": {
+        "stroke": "#db2777",
+        "strokeWidth": 1.5
+      },
+      "id": "e_n24_n1_1791295647237",
+      "source": "n24",
+      "target": "n1",
+      "sourceHandle": "b-s",
+      "targetHandle": "t-t",
+      "label": "P46_is_composed_of",
+      "data": {
+        "label": "P46_is_composed_of",
+        "propertyUri": "http://www.cidoc-crm.org/cidoc-crm/P46_is_composed_of",
+        "joinColumnSource": null,
+        "joinColumnTarget": null
+      },
+      "markerEnd": {
+        "type": "arrowclosed",
+        "color": "#db2777",
+        "width": 14,
+        "height": 14
+      },
+      "labelStyle": {
+        "fill": "#db2777",
+        "fontFamily": "'IBM Plex Mono',monospace",
+        "fontSize": 10
+      },
+      "labelBgStyle": {
+        "fill": "#ffffff",
+        "fillOpacity": 0.95
+      },
+      "labelBgPadding": [
+        4,
+        6
+      ],
+      "labelBgBorderRadius": 3
+    },
+    {
+      "focusable": true,
+      "style": {
+        "stroke": "#db2777",
+        "strokeWidth": 1.5
+      },
+      "id": "e_n2_n7_1791295795748",
+      "source": "n2",
+      "target": "n7",
+      "sourceHandle": "l-s",
+      "targetHandle": "r-t",
+      "label": "AP3_investigated",
+      "data": {
+        "label": "AP3_investigated",
+        "propertyUri": "http://www.cidoc-crm.org/extensions/crmarchaeo/AP3_investigated",
+        "joinColumnSource": "Activity_id",
+        "joinColumnTarget": "Excavation_ID",
+        "dotOne": null,
+        "dotOneTarget": null,
+        "noInverse": false,
+        "inversePropertyUri": "",
+        "explorerLabel": ""
+      },
+      "markerEnd": {
+        "type": "arrowclosed",
+        "color": "#db2777",
+        "width": 14,
+        "height": 14
+      },
+      "labelStyle": {
+        "fill": "#db2777",
+        "fontFamily": "'IBM Plex Mono',monospace",
+        "fontSize": 10
+      },
+      "labelBgStyle": {
+        "fill": "#ffffff",
+        "fillOpacity": 0.95
+      },
+      "labelBgPadding": [
+        4,
+        6
+      ],
+      "labelBgBorderRadius": 3,
+      "selected": false
     }
   ]
 }

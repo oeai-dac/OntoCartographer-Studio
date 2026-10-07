@@ -43,64 +43,21 @@ export const api = {
 
   getNamespaces: () => req('/ontology/namespaces'),
 
-  // ── RDF Pipeline (Table2RDF integration) ──────────────────────────────────
+  // ── Graph import (existing RDF / Graph-Explorer JSON → canvas model) ──────
 
-  runOntoRefine: (tsvContent, projectName, serverUrl, jarPath) =>
-    req('/pipeline/ontorefine', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        tsv_content: tsvContent,
-        project_name: projectName,
-        server_url: serverUrl || 'http://localhost:7333',
-        jar_path: jarPath || '',
-      }),
-    }),
+  importGraph: (file) => {
+    const form = new FormData()
+    form.append('file', file)
+    return req('/import/graph', { method: 'POST', body: form })
+  },
 
-  runOntoRefineLiterals: (tsvContent, projectName, serverUrl, jarPath) =>
-    req('/pipeline/ontorefine-literals', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        tsv_content: tsvContent,
-        project_name: projectName,
-        server_url: serverUrl || 'http://localhost:7333',
-        jar_path: jarPath || '',
-      }),
-    }),
+  // ── Export ────────────────────────────────────────────────────────────────
 
-  getGraphDBRepos: (serverUrl, username, password) =>
-    req(`/pipeline/graphdb/repos?server_url=${encodeURIComponent(serverUrl || 'http://localhost:7200')}&username=${encodeURIComponent(username || '')}&password=${encodeURIComponent(password || '')}`),
-
-  createGraphDBRepo: (serverUrl, repoId, repoTitle, username, password) =>
-    req('/pipeline/graphdb/create-repo', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        server_url: serverUrl, repo_id: repoId,
-        repo_title: repoTitle || repoId,
-        username: username || '', password: password || '',
-      }),
-    }),
-
-  deleteGraphDBRepo: (serverUrl, repoId, username, password) =>
-    req(`/pipeline/graphdb/repo/${encodeURIComponent(repoId)}?server_url=${encodeURIComponent(serverUrl)}&username=${encodeURIComponent(username || '')}&password=${encodeURIComponent(password || '')}`,
-      { method: 'DELETE' }),
-
-  importToGraphDB: (projectId, serverUrl, repoId, repoTitle, username, password, isLiterals) =>
-    req('/pipeline/graphdb/import', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        project_id: projectId,
-        server_url: serverUrl, repo_id: repoId,
-        repo_title: repoTitle || '',
-        username: username || '', password: password || '',
-        is_literals: isLiterals || false,
-      }),
-    }),
-
-  exportRdf: (uriTsv, literalTsv, format) =>
+  // `languages` = { primary, additional[] }. The TSV carries the additional
+  // languages in `<column>@<tag>` columns; the primary one stays in the plain
+  // column and is named here, because a language tag applies to the whole
+  // export rather than to a single row.
+  exportRdf: (uriTsv, literalTsv, format, languages) =>
     req('/pipeline/rdf-export', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -108,10 +65,12 @@ export const api = {
         uri_tsv: uriTsv,
         literal_tsv: literalTsv || '',
         format: format || 'xml',
+        primary_lang: languages?.primary || '',
+        additional_langs: languages?.additional || [],
       }),
     }),
 
-  exportGraphExplorerJson: (uriTsv, literalTsv, title, typeColors, typeLabels, edgeLabels) =>
+  exportGraphExplorerJson: (uriTsv, literalTsv, title, typeColors, typeLabels, edgeLabels, languages) =>
     req('/pipeline/graph-explorer-json', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -122,6 +81,8 @@ export const api = {
         type_colors: typeColors || {},
         type_labels: typeLabels || {},
         edge_labels: edgeLabels || {},
+        primary_lang: languages?.primary || '',
+        additional_langs: languages?.additional || [],
       }),
     }),
 }

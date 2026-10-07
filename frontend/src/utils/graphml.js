@@ -15,6 +15,8 @@
  *  - All prior fixes (empty rangeId skipped, Case Cy auto-detect FK col, etc.)
  */
 
+import { DEFAULT_LANGUAGES, normalizeLanguages, getLangValue } from './languages.js'
+
 // ─── GraphML ──────────────────────────────────────────────────────────────────
 
 export function exportGraphML(nodes, edges) {
@@ -232,6 +234,49 @@ function getLabelValue(nodeData, row) {
   return ''
 }
 
+// Same rule as getLabelValue, but for one named language: its own label column
+// if the node has one, otherwise its own typed label. Returns '' for the
+// primary language — that one is already covered by getLabelValue above, which
+// reads the flat field.
+function getLabelValueFor(nodeData, row, lang, languages) {
+  const col = getLangValue(nodeData, 'labelColumn', lang, languages)
+  if (col && row) {
+    const val = row[col]
+    return val != null ? String(val) : ''
+  }
+  return getLangValue(nodeData, 'instanceLabel', lang, languages) || ''
+}
+
+/** { lang: value } for the ADDITIONAL languages only, empty ones omitted. */
+function getLabelValuesI18n(nodeData, row, languages) {
+  const out = {}
+  for (const lang of languages.additional) {
+    const v = getLabelValueFor(nodeData, row, lang, languages)
+    if (v) out[lang] = v
+  }
+  return out
+}
+
+function getExplorerLabelsI18n(nodeData, languages) {
+  const out = {}
+  for (const lang of languages.additional) {
+    const v = getLangValue(nodeData, 'explorerLabel', lang, languages)
+    if (v) out[lang] = v
+  }
+  return out
+}
+
+// TSV column names for the additional languages. Appended AFTER every existing
+// column, so the positional parse in exportRdfPipelineTSV keeps working and a
+// single-language project produces a byte-identical file to before.
+function i18nColumns(languages, names) {
+  const cols = []
+  for (const lang of languages.additional) {
+    for (const n of names) cols.push(`${n}@${lang}`)
+  }
+  return cols
+}
+
 /**
  * Try to find a FK join key between two different tables.
  * Returns { joinKeySrc, joinKeyTgt } or null.
@@ -294,7 +339,12 @@ function sameTableData(a, b) {
  *
  * RULE: rows where rangeId is empty are always skipped.
  */
-export function exportMappingTSV(nodes, edges, globalTableData, prefixMap = {}, idPrefix = '', namedGraphs = []) {
+export function exportMappingTSV(nodes, edges, globalTableData, prefixMap = {}, idPrefix = '', namedGraphs = [], languages = DEFAULT_LANGUAGES) {
+  const langs = normalizeLanguages(languages)
+  // The four label columns that can differ per language. The property's own
+  // Explorer name is deliberately not among them: it names an edge type, not a
+  // record, and the Explorer groups edges by it — one name per property.
+  const I18N_COLS = ['Domain_label', 'Range_Label', 'Domain_explorer_label', 'Range_explorer_label']
   const headers = [
     'ID_of_Domain', 'Domain_label', 'Class_of_domain',
     'Property',
@@ -302,6 +352,7 @@ export function exportMappingTSV(nodes, edges, globalTableData, prefixMap = {}, 
     'Dot_one', 'Dot_one_target', 'I4_Proposition_Set', 'No_Inverse',
     'Domain_explorer_label', 'Range_explorer_label', 'Property_explorer_label',
     'Inverse_Property_URI',
+    ...i18nColumns(langs, I18N_COLS),
   ]
 
   // Build named graph lookup: nodeId -> graph label
@@ -477,6 +528,31 @@ export function exportMappingTSV(nodes, edges, globalTableData, prefixMap = {}, 
       // otherwise prematurely split this single row into multiple
       // corrupted ones once serialised, silently truncating the value
       // and misaligning every column after it.
+      // Per-language labels are read from the same node data and the same
+      // matched row this call already resolved the primary label from, so a
+      // join, a zip or a cartesian pair yields the translation of exactly the
+      // record it produced — no second pass that could pick another row.
+      //
+      // Gate: a side only gets translations when it has a primary label at
+      // all. That keeps one deliberate case intact — the Cy join branch below
+      // blanks domainLbl because the domain comes from a foreign key rather
+      // than from a row of its own, and it must stay label-free in every
+      // language. The cost is that a row whose primary cell is empty carries
+      // no translations either; the primary language is the anchor.
+      const i18n = {}
+      if (langs.additional.length > 0) {
+        const dLabels = domainLbl ? getLabelValuesI18n(src.data, sRow, langs) : {}
+        const rLabels = rangeLbl  ? getLabelValuesI18n(tgt.data, tRow, langs) : {}
+        const dExpl   = getExplorerLabelsI18n(src.data, langs)
+        const rExpl   = getExplorerLabelsI18n(tgt.data, langs)
+        for (const lang of langs.additional) {
+          i18n[`Domain_label@${lang}`]          = sanitizeTsvValue(dLabels[lang] || '')
+          i18n[`Range_Label@${lang}`]           = sanitizeTsvValue(rLabels[lang] || '')
+          i18n[`Domain_explorer_label@${lang}`] = sanitizeTsvValue(dExpl[lang] || '')
+          i18n[`Range_explorer_label@${lang}`]  = sanitizeTsvValue(rExpl[lang] || '')
+        }
+      }
+
       outputRows.push({
         domainId: sanitizeTsvValue(domainId), domainLbl: sanitizeTsvValue(domainLbl), domainClass, prop: propShort,
         rangeId: sanitizeTsvValue(rangeId), rangeLbl: sanitizeTsvValue(rangeLbl), rangeClass,
@@ -486,6 +562,7 @@ export function exportMappingTSV(nodes, edges, globalTableData, prefixMap = {}, 
         rangeExplorerLabel: sanitizeTsvValue(rangeExplorerLabel),
         propExplorerLabel: sanitizeTsvValue(propExplorerLabel),
         inversePropUri: sanitizeTsvValue(inversePropShort),
+        i18n,
       })
     }
 
@@ -683,6 +760,7 @@ export function exportMappingTSV(nodes, edges, globalTableData, prefixMap = {}, 
   }
 
   // Build TSV
+  const extraCols = i18nColumns(langs, I18N_COLS)
   const tsvRows = [headers.join('\t')]
   for (const r of outputRows) {
     tsvRows.push([
@@ -691,16 +769,20 @@ export function exportMappingTSV(nodes, edges, globalTableData, prefixMap = {}, 
       r.dotOne || '', r.dotOneTarget || '', r.i4 || '', r.noInverse || '',
       r.domainExplorerLabel || '', r.rangeExplorerLabel || '', r.propExplorerLabel || '',
       r.inversePropUri || '',
+      ...extraCols.map(c => (r.i18n && r.i18n[c]) || ''),
     ].join('\t'))
   }
   return tsvRows.join('\n')
 }
 
 
-// ─── RDF Pipeline Export (replaces Table2RDF Steps 1-3) ──────────────────────
+// ─── TSV Export ──────────────────────────────────────────────────────────────
 //
-// This produces URI-expanded TSV files ready for Ontotext Refine,
-// completely eliminating the PostgreSQL dependency.
+// The single intermediate format behind every export: the RDF export and the
+// Graph Explorer export both post these tables to the backend, and the Export
+// menu offers them as a download of their own. The name still says "Pipeline"
+// because this fed the RDF Pipeline (Ontotext Refine -> GraphDB) until that
+// was removed in v3.0.0; the regression test imports it under this name.
 // Two files are generated:
 //   1. Triples_URI.tsv       – rows where range class is NOT a literal type
 //   2. Triples_URI_literal.tsv – rows where range class IS a literal type (xsd:*, geo:wktLiteral)
@@ -721,6 +803,27 @@ function isLiteralRange(rangeClass) {
   return LITERAL_URI_PATTERNS.some(pat => rc.includes(pat))
 }
 
+// rdfs:Literal is deliberately NOT part of isLiteralRange above: those rows stay
+// in the URI TSV so the RDF export keeps emitting a real (typed) range resource.
+// The Graph Explorer, however, folds them into the domain node's attributes just
+// like the xsd:*/wktLiteral ones -- neither kind ever becomes an Explorer node.
+const RDFS_LITERAL_PATTERNS = ['rdfs:Literal', 'http://www.w3.org/2000/01/rdf-schema#Literal']
+
+/**
+ * True when a canvas node's class URI makes its values end up as ATTRIBUTES of
+ * the parent node in the Graph Explorer export, rather than as nodes of their
+ * own. Covers both folding routes: rdfs:Literal (folded in the backend) and
+ * xsd:* / geo:wktLiteral (routed into the literal TSV). Since there is no node
+ * on the other end, such a connection can carry no opposite direction --
+ * callers use this to say so up front instead of silently dropping the value.
+ */
+export function isFoldedLiteralClass(classUri) {
+  if (!classUri) return false
+  const uri = String(classUri).trim()
+  if (RDFS_LITERAL_PATTERNS.some(pat => uri === pat)) return true
+  return isLiteralRange(uri)
+}
+
 /**
  * Generate URI-expanded TSV rows from the mapping data.
  *
@@ -731,16 +834,36 @@ function isLiteralRange(rangeClass) {
  *
  * Returns { uriTSV, literalTSV, uriRowCount, literalRowCount }
  */
-export function exportRdfPipelineTSV(nodes, edges, globalTableData, prefixMap = {}, idPrefix = '', namedGraphs = []) {
+export function exportRdfPipelineTSV(nodes, edges, globalTableData, prefixMap = {}, idPrefix = '', namedGraphs = [], languages = DEFAULT_LANGUAGES) {
+  const langs = normalizeLanguages(languages)
   // First, generate the standard mapping rows (reuse existing logic)
-  const rawTSV = exportMappingTSV(nodes, edges, globalTableData, prefixMap, idPrefix, namedGraphs)
+  const rawTSV = exportMappingTSV(nodes, edges, globalTableData, prefixMap, idPrefix, namedGraphs, langs)
   const lines = rawTSV.split('\n')
   if (lines.length < 2) return { uriTSV: '', literalTSV: '', uriRowCount: 0, literalRowCount: 0 }
+
+  // The per-language columns sit after every fixed one, so the positional
+  // reads below stay valid; they are picked up by name from the header line.
+  // Source column -> the lower-case name the backend reads it under.
+  const I18N_MAP = {
+    'Domain_label':          'domain_label',
+    'Range_Label':           'range_label',
+    'Domain_explorer_label': 'domain_explorer_label',
+    'Range_explorer_label':  'range_explorer_label',
+  }
+  const headerCols = lines[0].split('\t')
+  const i18nCols = []   // { idx, outName }
+  for (const lang of langs.additional) {
+    for (const [src, out] of Object.entries(I18N_MAP)) {
+      const idx = headerCols.indexOf(`${src}@${lang}`)
+      if (idx >= 0) i18nCols.push({ idx, outName: `${out}@${lang}` })
+    }
+  }
 
   // Parse back the rows (skip header)
   const dataRows = lines.slice(1).map(line => {
     const cols = line.split('\t')
     return {
+      i18n: Object.fromEntries(i18nCols.map(c => [c.outName, cols[c.idx] || ''])),
       domainId:    cols[0] || '',
       domainLbl:   cols[1] || '',
       domainClass: cols[2] || '',
@@ -759,8 +882,10 @@ export function exportRdfPipelineTSV(nodes, edges, globalTableData, prefixMap = 
     }
   }).filter(r => r.domainId || r.rangeId) // skip completely empty rows
 
-  // Expand all prefixed values to full URIs
+  // Expand all prefixed values to full URIs. The language columns hold plain
+  // display text, never a URI, so they pass through untouched.
   const expandRow = (r) => ({
+    ...r.i18n,
     id_of_domain_uri:       expandPrefix(r.domainId,    prefixMap),
     class_of_domain_uri:    expandPrefix(r.domainClass, prefixMap),
     domain_label:           r.domainLbl,
@@ -798,6 +923,7 @@ export function exportRdfPipelineTSV(nodes, edges, globalTableData, prefixMap = 
     'dot_one_uri', 'dot_one_target_uri', 'i4_uri', 'no_inverse',
     'domain_explorer_label', 'range_explorer_label', 'property_explorer_label',
     'inverse_property_uri',
+    ...i18nCols.map(c => c.outName),
   ]
 
   // Literal TSV has slightly different column order (matching Table2RDF's SQL output)
@@ -807,6 +933,7 @@ export function exportRdfPipelineTSV(nodes, edges, globalTableData, prefixMap = 
     'dot_one_uri', 'dot_one_target_uri', 'p3_has_note', 'i4_uri', 'no_inverse',
     'domain_explorer_label', 'range_explorer_label', 'property_explorer_label',
     'inverse_property_uri',
+    ...i18nCols.map(c => c.outName),
   ]
 
   const buildTSV = (headers, rows) => {

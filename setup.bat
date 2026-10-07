@@ -47,9 +47,17 @@ REM ── Frontend deps ──────────────────�
 echo ^> Installing frontend dependencies...
 cd frontend
 if not exist "node_modules" (
-    npm install --silent
+    call npm install --silent
     echo   + node_modules installed
 ) else (
     echo   + node_modules already exists
 )
 cd ..
+
+echo.
+echo ========================================
+echo   + Setup complete!
+echo   Double-click start.bat to launch the app.
+echo ========================================
+echo.
+pause
