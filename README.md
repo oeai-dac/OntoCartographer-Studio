@@ -430,7 +430,7 @@ Switch to the **Table Panel** ① and click **Load** ②. Supported are `.csv`, 
 For a JSON file, a dialog asks how to read it: as **Records** (a list of entries, one row each — typical for database or API exports) or as **Schema / Form** (nested field definitions, one row per field).
  
 <p>
-    <img src="docs/images/load_tables.png" alt="Load Tables" width="600">
+    <img src="docs/images/load_tables.png" alt="Load Tables" width="400">
 </p>
 
 **Updated a table?** Correct it outside the Studio and load it again with **↻ Reload** in its tab — every mapping stays in place and all exports use the new rows. See [Save and Load Projects](#tables-after-loading) for how tables come back when you reopen a project.
