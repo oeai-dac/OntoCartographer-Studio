@@ -785,7 +785,7 @@ A project is usually reopened to work with **updated** data. That is why the tab
 - **Choose a table that is already loaded** ④ from the dropdown in the tab.
 
 <p>
-    <img src="docs/images/reload_tables.png" alt="Reload and Reassign Tables" width="600">
+    <img src="docs/images/reload_tables.png" alt="Reload and Reassign Tables" width="400">
 </p>
 
 Every column mapping stays valid whichever way you choose.
